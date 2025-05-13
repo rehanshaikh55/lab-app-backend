@@ -1,0 +1,9 @@
+{
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ES6",
+        "moduleResolution": "Node",
+        "allowSyntheticDefaultImports": true
+    },
+    "exclude": ["node_modules"]
+}
