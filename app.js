@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import { connectDB } from "./config/connect.js";
 import { PORT } from "./config/config.js";
 import { admin, buildAdminRouter } from "./config/setup.js";
-//import { registerRoutes } from "./routes/index.js";
+import  {registerRoutes}  from "./routes/index.js";
 import fastifySocketIO from "fastify-socket.io";
 import cors from 'cors'
 
@@ -20,7 +20,7 @@ const start = async () => {
     transports:['websocket']
   })
 
-  //await registerRoutes(app);
+  await registerRoutes(app);
   await buildAdminRouter(app);
 
   app.listen({ port: PORT, host: "0.0.0.0" }, (err, addr) => {

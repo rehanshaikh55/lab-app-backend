@@ -5,12 +5,12 @@ import crypto from 'crypto';
 import generateToken from '../utils/generateToken.js';
 
 // Register
-export const register = async (req, res) => {
+export const register = async (request, reply) => {
   try {
-    const { name, email, password, phone, address, role } = req.body;
+    const { name, email, password, phone, address, role } = request.body;
 
     const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email already in use' });
+    if (existing) return reply.code(400).send({ message: 'Email already in use' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -20,33 +20,33 @@ export const register = async (req, res) => {
       password: hashedPassword,
       phone,
       address,
-      role: role || 'user'
+      role: role || 'user',
     });
 
     const token = generateToken(newUser._id);
 
-    res.status(201).json({ user: newUser, token });
+    return reply.code(201).send({ user: newUser, token });
   } catch (err) {
-    res.status(500).json({ message: 'Registration failed', error: err.message });
+    return reply.code(500).send({ message: 'Registration failed', error: err.message });
   }
 };
 
 // Login
-export const login = async (req, res) => {
+export const login = async (request, reply) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = request.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid email or password' });
+    if (!user) return reply.code(400).send({ message: 'Email doesnt Exist please register this email ' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+    if (!isMatch) return reply.code(400).send({ message: 'Invalid email or password' });
 
     const token = generateToken(user._id);
 
-    res.status(200).json({ user, token });
+    return reply.code(200).send({ user, token });
   } catch (err) {
-    res.status(500).json({ message: 'Login failed', error: err.message });
+    return reply.code(500).send({ message: 'Login failed', error: err.message });
   }
 };
 
@@ -54,21 +54,21 @@ export const login = async (req, res) => {
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: "shaikhrehan1016@gmail.com", // Your Gmail
-    pass: "hpvm mfbe yozg wxyt"        // App password
-  }
+    user: 'shaikhrehan1016@gmail.com',
+    pass: 'hpvm mfbe yozg wxyt', // App password
+  },
 });
 
 // Forgot Password
-export const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+export const forgotPassword = async (request, reply) => {
+  const { email } = request.body;
 
   try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return reply.code(404).send({ message: 'User not found' });
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = Date.now() + 3600000;
+    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
 
     user.resetToken = resetToken;
     user.resetTokenExpiry = resetTokenExpiry;
@@ -80,19 +80,19 @@ export const forgotPassword = async (req, res) => {
       from: 'shaikhrehan1016@gmail.com',
       to: user.email,
       subject: 'Password Reset',
-      html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link will expire in 1 hour.</p>`
+      html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link will expire in 1 hour.</p>`,
     });
 
-    res.status(200).json({ message: 'Password reset email sent successfully' });
+    return reply.code(200).send({ message: 'Password reset email sent successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to send email', error: err.message });
+    return reply.code(500).send({ message: 'Failed to send email', error: err.message });
   }
 };
 
 // Reset Password
-export const resetPassword = async (req, res) => {
-  const { token } = req.params;
-  const { newPassword } = req.body;
+export const resetPassword = async (request, reply) => {
+  const { token } = request.params;
+  const { newPassword } = request.body;
 
   try {
     const user = await User.findOne({
@@ -100,15 +100,15 @@ export const resetPassword = async (req, res) => {
       resetTokenExpiry: { $gt: Date.now() },
     });
 
-    if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+    if (!user) return reply.code(400).send({ message: 'Invalid or expired token' });
 
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
     await user.save();
 
-    res.status(200).json({ message: 'Password has been reset successfully' });
+    return reply.code(200).send({ message: 'Password has been reset successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to reset password', error: err.message });
+    return reply.code(500).send({ message: 'Failed to reset password', error: err.message });
   }
 };

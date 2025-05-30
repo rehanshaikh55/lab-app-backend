@@ -38,7 +38,7 @@ export const admin = new AdminJS({
     {
       resource: Test,
       options: {
-        listProperties: ['name', 'price', ],
+        listProperties: ['name', 'price', ], 
       }
     },
     {
