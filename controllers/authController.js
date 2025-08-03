@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import generateToken from '../utils/generateToken.js';
+import admin from '../config/firebase.js';
+
 
 // Register
 export const register = async (request, reply) => {
@@ -112,3 +114,27 @@ export const resetPassword = async (request, reply) => {
     return reply.code(500).send({ message: 'Failed to reset password', error: err.message });
   }
 };
+
+
+
+export async function firebaseLogin(request, reply) {
+  const { idToken } = request.body;
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    let user = await User.findOne({ firebaseUid: decoded.uid });
+    if (!user) {
+      user = await User.create({
+        firebaseUid: decoded.uid,
+        email: decoded.email,
+        name: decoded.name,
+        role: 'user',
+        picture: decoded.picture,
+      });
+    }
+    // Issue your own JWT if you need session tokens:
+    const token = generateToken(user._id);
+    return reply.send({ user, token });
+  } catch (err) {
+    return reply.code(401).send({ message: 'Firebase login failed', error: err.message });
+  }
+}
