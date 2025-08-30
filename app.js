@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { connectDB } from "./config/connect.js";
 import { PORT } from "./config/config.js";
 import { admin, buildAdminRouter } from "./config/setup.js";
+import './config/firebase.js';
 import  {registerRoutes}  from "./routes/index.js";
 import websocket from '@fastify/websocket';
 import cors from 'cors'

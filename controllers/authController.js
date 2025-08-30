@@ -117,24 +117,49 @@ export const resetPassword = async (request, reply) => {
 
 
 
-export async function firebaseLogin(request, reply) {
+export const firebaseLogin = async (request, reply) => {
   const { idToken } = request.body;
+  if (!idToken) {
+    return reply.code(400).send({ message: 'Missing idToken in request body' });
+  }
+
+  try {
+    // Verify the ID token with Firebase
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    // Return only the Firebase user claims
+    return reply.code(200).send({
+      uid: decoded.uid,
+      email: decoded.email,
+      emailVerified: decoded.email_verified,
+      name: decoded.name,
+      picture: decoded.picture,
+      provider: decoded.firebase.sign_in_provider,
+    });
+  } catch (err) {
+    return reply.code(401).send({
+      message: 'Firebase login failed',
+      error: err.message,
+    });
+  }
+};
+
+// (Optional) Revoke all refresh tokens for a user (force logout)
+export const revokeTokens = async (request, reply) => {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return reply.code(401).send({ message: 'Missing Firebase ID token' });
+  }
+  const idToken = authHeader.split('Bearer ')[1];
+
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
-    let user = await User.findOne({ firebaseUid: decoded.uid });
-    if (!user) {
-      user = await User.create({
-        firebaseUid: decoded.uid,
-        email: decoded.email,
-        name: decoded.name,
-        role: 'user',
-        picture: decoded.picture,
-      });
-    }
-    // Issue your own JWT if you need session tokens:
-    const token = generateToken(user._id);
-    return reply.send({ user, token });
+    await admin.auth().revokeRefreshTokens(decoded.uid);
+    return reply.code(200).send({ message: 'Tokens revoked successfully' });
   } catch (err) {
-    return reply.code(401).send({ message: 'Firebase login failed', error: err.message });
+    return reply.code(500).send({
+      message: 'Failed to revoke tokens',
+      error: err.message,
+    });
   }
-}
+};
