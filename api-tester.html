@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Labzy API Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    header span { font-size: 12px; color: #7c85a2; background: #252836; padding: 3px 10px; border-radius: 20px; }
+
+    .layout { display: flex; height: calc(100vh - 57px); }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: #13151f;
+      border-right: 1px solid #2d3148;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+    .sidebar-section { padding: 8px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #4a5275; }
+    .endpoint-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #b0bbd4;
+      font-size: 13px;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .endpoint-btn:hover { background: #1e2133; color: #fff; }
+    .endpoint-btn.active { background: #1e2a45; color: #60a5fa; }
+    .method-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      min-width: 38px;
+      text-align: center;
+    }
+    .GET    { background: #064e3b; color: #34d399; }
+    .POST   { background: #1e3a5f; color: #60a5fa; }
+    .PUT    { background: #4a2e00; color: #fbbf24; }
+    .DELETE { background: #4a0000; color: #f87171; }
+
+    /* Main panel */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .token-bar {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .token-bar label { color: #7c85a2; white-space: nowrap; }
+    .token-bar input {
+      flex: 1;
+      background: #252836;
+      border: 1px solid #3a3f5c;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .token-bar input:focus { outline: none; border-color: #60a5fa; }
+    .token-clear {
+      background: none;
+      border: 1px solid #3a3f5c;
+      color: #7c85a2;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .token-clear:hover { color: #f87171; border-color: #f87171; }
+
+    .request-panel { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    .endpoint-header { display: flex; align-items: center; gap: 12px; }
+    .endpoint-header h2 { font-size: 18px; font-weight: 600; }
+    .endpoint-description { color: #7c85a2; font-size: 13px; }
+    .url-display {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #a5b4fc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .url-display span { color: #7c85a2; }
+
+    .form-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .form-card-header {
+      background: #1e2133;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #7c85a2;
+      border-bottom: 1px solid #2d3148;
+    }
+    .form-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field-group { display: flex; flex-direction: column; gap: 5px; }
+    .field-group label { font-size: 12px; color: #7c85a2; font-weight: 500; }
+    .field-group input, .field-group select, .field-group textarea {
+      background: #252836;
+      border: 1px solid #3a3f5c;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 8px 10px;
+      font-size: 13px;
+      width: 100%;
+      transition: border-color 0.15s;
+    }
+    .field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+      outline: none;
+      border-color: #60a5fa;
+    }
+    .field-group textarea { font-family: monospace; resize: vertical; min-height: 80px; }
+    .field-group select option { background: #252836; }
+
+    .send-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+      align-self: flex-start;
+    }
+    .send-btn:hover { background: #1d4ed8; }
+    .send-btn:disabled { background: #334155; cursor: not-allowed; }
+
+    /* Response */
+    .response-section { display: flex; flex-direction: column; gap: 10px; }
+    .response-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .status-badge {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .status-ok    { background: #064e3b; color: #34d399; }
+    .status-err   { background: #4a0000; color: #f87171; }
+    .status-warn  { background: #4a2e00; color: #fbbf24; }
+    .response-time { color: #7c85a2; }
+
+    .response-body {
+      background: #13151f;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 340px;
+      overflow-y: auto;
+      color: #a5f3c0;
+      line-height: 1.6;
+    }
+    .response-body.error { color: #f87171; }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid #3a3f5c;
+      color: #7c85a2;
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: auto;
+    }
+    .copy-btn:hover { color: #60a5fa; border-color: #60a5fa; }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #4a5275;
+      gap: 12px;
+    }
+    .empty-state svg { opacity: 0.4; }
+    .empty-state p { font-size: 14px; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" fill="#3b82f6"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".6"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".6"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".3"/>
+  </svg>
+  <h1>Labzy API Tester</h1>
+  <span>v1.0</span>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-section">Auth</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('register')">
+      <span class="method-badge POST">POST</span> Register
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('login')">
+      <span class="method-badge POST">POST</span> Login
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('forgot-password')">
+      <span class="method-badge POST">POST</span> Forgot Password
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('reset-password')">
+      <span class="method-badge POST">POST</span> Reset Password
+    </button>
+
+    <div class="sidebar-section" style="margin-top:8px">Profile</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-profile')">
+      <span class="method-badge GET">GET</span> My Profile
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('complete-profile')">
+      <span class="method-badge POST">POST</span> Complete Profile
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-profile')">
+      <span class="method-badge PUT">PUT</span> Update Profile
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-location')">
+      <span class="method-badge POST">POST</span> Update Location
+    </button>
+    <button class="endpoint-btn" onclick="selectEndpoint('nearby-labs')">
+      <span class="method-badge GET">GET</span> Nearby Labs
+    </button>
+
+    <div class="sidebar-section" style="margin-top:8px">Partner</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('daily-bookings')">
+      <span class="method-badge GET">GET</span> Daily Bookings
+    </button>
+
+    <div class="sidebar-section" style="margin-top:8px">Reports</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-report')">
+      <span class="method-badge GET">GET</span> Get Report
+    </button>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Token bar -->
+    <div class="token-bar">
+      <label>🔑 Bearer Token:</label>
+      <input type="text" id="global-token" placeholder="Paste JWT token here (auto-filled on login)" />
+      <button class="token-clear" onclick="clearToken()">Clear</button>
+    </div>
+
+    <div class="request-panel" id="request-panel">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        <p>Select an endpoint from the sidebar to get started</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:3000/api';
+
+  const ENDPOINTS = {
+    register: {
+      method: 'POST', path: '/auth/register', auth: false,
+      description: 'Create a new customer or lab account',
+      fields: [
+        { name: 'name',     label: 'Name',     type: 'text',   placeholder: 'John Doe' },
+        { name: 'email',    label: 'Email',     type: 'email',  placeholder: 'john@example.com' },
+        { name: 'password', label: 'Password',  type: 'password', placeholder: 'Min 6 chars' },
+        { name: 'phone',    label: 'Phone',     type: 'text',   placeholder: '+91 9876543210', optional: true },
+        { name: 'role',     label: 'Role',      type: 'select', options: ['user', 'lab'], default: 'user' },
+      ]
+    },
+    login: {
+      method: 'POST', path: '/auth/login', auth: false,
+      description: 'Login and receive a JWT token',
+      fields: [
+        { name: 'email',    label: 'Email',    type: 'email',    placeholder: 'john@example.com' },
+        { name: 'password', label: 'Password', type: 'password', placeholder: 'Your password' },
+      ],
+      onSuccess: (data) => {
+        if (data.token) {
+          document.getElementById('global-token').value = data.token;
+          showToast('Token saved automatically!');
+        }
+      }
+    },
+    'forgot-password': {
+      method: 'POST', path: '/auth/forgot-password', auth: false,
+      description: 'Send a password reset email',
+      fields: [
+        { name: 'email', label: 'Email', type: 'email', placeholder: 'john@example.com' },
+      ]
+    },
+    'reset-password': {
+      method: 'POST', path: '/auth/reset-password/:token', auth: false,
+      description: 'Reset password using the token from email',
+      pathParams: ['token'],
+      fields: [
+        { name: 'token',    label: 'Reset Token (from email URL)', type: 'text', placeholder: 'Paste token from email link', isPathParam: true },
+        { name: 'password', label: 'New Password', type: 'password', placeholder: 'New password' },
+      ]
+    },
+    'get-profile': {
+      method: 'GET', path: '/profile/me', auth: true,
+      description: 'Fetch authenticated user\'s profile',
+      fields: []
+    },
+    'complete-profile': {
+      method: 'POST', path: '/profile/complete', auth: true,
+      description: 'Submit initial profile details',
+      fields: [
+        { name: 'gender',    label: 'Gender',     type: 'select', options: ['male', 'female', 'other'] },
+        { name: 'birthDate', label: 'Birth Date',  type: 'date' },
+        { name: 'phone',     label: 'Phone',       type: 'text', placeholder: '+91 9876543210', optional: true },
+        { name: 'address',   label: 'Address',     type: 'text', placeholder: '123 Main St, City', optional: true },
+      ]
+    },
+    'update-profile': {
+      method: 'PUT', path: '/profile/update', auth: true,
+      description: 'Update profile fields',
+      fields: [
+        { name: 'name',      label: 'Name',      type: 'text', placeholder: 'John Doe', optional: true },
+        { name: 'gender',    label: 'Gender',    type: 'select', options: ['', 'male', 'female', 'other'], optional: true },
+        { name: 'birthDate', label: 'Birth Date', type: 'date', optional: true },
+        { name: 'phone',     label: 'Phone',     type: 'text', placeholder: '+91 9876543210', optional: true },
+      ]
+    },
+    'update-location': {
+      method: 'POST', path: '/profile/location', auth: true,
+      description: 'Update user location (address or GPS coordinates)',
+      fields: [
+        { name: 'address',   label: 'Address (text)',  type: 'text', placeholder: 'Mumbai, India', optional: true },
+        { name: 'latitude',  label: 'Latitude',        type: 'number', placeholder: '19.0760', optional: true },
+        { name: 'longitude', label: 'Longitude',       type: 'number', placeholder: '72.8777', optional: true },
+      ]
+    },
+    'nearby-labs': {
+      method: 'GET', path: '/profile/nearby-labs', auth: true,
+      description: 'Find labs near user\'s saved location',
+      fields: [
+        { name: 'radius', label: 'Radius (km)', type: 'number', placeholder: '10', optional: true, isQuery: true },
+      ]
+    },
+    'daily-bookings': {
+      method: 'GET', path: '/partner/bookings/daily', auth: true, role: 'lab',
+      description: 'Get today\'s bookings for the authenticated lab (role: lab)',
+      fields: []
+    },
+    'get-report': {
+      method: 'GET', path: '/reports/:id', auth: true,
+      description: 'Get a report by ID (returns signed Firebase Storage URL)',
+      pathParams: ['id'],
+      fields: [
+        { name: 'id', label: 'Report ID (MongoDB ObjectId)', type: 'text', placeholder: '507f1f77bcf86cd799439011', isPathParam: true },
+      ]
+    },
+  };
+
+  let activeId = null;
+  let lastResponse = null;
+
+  function selectEndpoint(id) {
+    activeId = id;
+    document.querySelectorAll('.endpoint-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', btn.getAttribute('onclick') === `selectEndpoint('${id}')`);
+    });
+    renderForm(id);
+  }
+
+  function renderForm(id) {
+    const ep = ENDPOINTS[id];
+    const panel = document.getElementById('request-panel');
+
+    const urlDisplay = ep.path.replace(/:(\w+)/g, '<span>:$1</span>');
+
+    let fieldsHtml = '';
+    const fields = ep.fields || [];
+    const half = Math.ceil(fields.length / 2);
+
+    if (fields.length > 0) {
+      fieldsHtml = `
+        <div class="form-card">
+          <div class="form-card-header">Request Body / Params</div>
+          <div class="form-body">
+            <div class="form-row">
+      `;
+      fields.forEach(f => {
+        let input = '';
+        if (f.type === 'select') {
+          const opts = f.options.map(o => `<option value="${o}"${o === f.default ? ' selected' : ''}>${o || '-- none --'}</option>`).join('');
+          input = `<select id="field-${f.name}">${opts}</select>`;
+        } else if (f.type === 'date') {
+          input = `<input type="date" id="field-${f.name}" />`;
+        } else {
+          input = `<input type="${f.type}" id="field-${f.name}" placeholder="${f.placeholder || ''}" />`;
+        }
+        fieldsHtml += `
+          <div class="field-group">
+            <label>${f.label}${f.optional ? ' <em style="opacity:.5;font-style:normal">(optional)</em>' : ''}</label>
+            ${input}
+          </div>
+        `;
+      });
+      fieldsHtml += `</div></div></div>`;
+    }
+
+    let roleBadge = ep.role ? `<span class="method-badge" style="background:#3b1f6e;color:#c084fc;font-size:11px">ROLE: ${ep.role}</span>` : '';
+    let authBadge = ep.auth
+      ? `<span style="font-size:12px;background:#1e3a2e;color:#4ade80;padding:3px 10px;border-radius:20px">🔒 Auth Required</span>`
+      : `<span style="font-size:12px;background:#252836;color:#7c85a2;padding:3px 10px;border-radius:20px">🌐 Public</span>`;
+
+    panel.innerHTML = `
+      <div class="endpoint-header">
+        <span class="method-badge ${ep.method}">${ep.method}</span>
+        <h2>${formatName(id)}</h2>
+        ${authBadge}
+        ${roleBadge}
+      </div>
+      <p class="endpoint-description">${ep.description}</p>
+      <div class="url-display">
+        <span style="color:#7c85a2">${BASE}</span>${urlDisplay}
+      </div>
+      ${fieldsHtml}
+      <button class="send-btn" onclick="sendRequest('${id}')" id="send-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+        Send Request
+      </button>
+      <div id="response-section"></div>
+    `;
+  }
+
+  async function sendRequest(id) {
+    const ep = ENDPOINTS[id];
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Sending…`;
+
+    let path = ep.path;
+    const body = {};
+    const queryParams = {};
+
+    for (const f of ep.fields || []) {
+      const el = document.getElementById(`field-${f.name}`);
+      const val = el ? el.value.trim() : '';
+      if (!val) continue;
+
+      if (f.isPathParam) {
+        path = path.replace(`:${f.name}`, encodeURIComponent(val));
+      } else if (f.isQuery) {
+        queryParams[f.name] = val;
+      } else {
+        body[f.name] = val;
+      }
+    }
+
+    let url = `${BASE}${path}`;
+    if (Object.keys(queryParams).length > 0) {
+      url += '?' + new URLSearchParams(queryParams).toString();
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    const token = document.getElementById('global-token').value.trim();
+    if (ep.auth && token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const options = { method: ep.method, headers };
+    if (ep.method !== 'GET') {
+      options.body = JSON.stringify(body);
+    }
+
+    const t0 = Date.now();
+    let status = 0, data = null, isErr = false;
+
+    try {
+      const res = await fetch(url, options);
+      status = res.status;
+      try { data = await res.json(); } catch { data = await res.text(); }
+      isErr = !res.ok;
+
+      if (!isErr && ep.onSuccess) ep.onSuccess(data);
+    } catch (err) {
+      isErr = true;
+      data = { error: err.message, hint: 'Is the server running on localhost:3000?' };
+    }
+
+    const elapsed = Date.now() - t0;
+    lastResponse = data;
+    renderResponse(status, data, elapsed, isErr);
+
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg> Send Request`;
+  }
+
+  function renderResponse(status, data, elapsed, isErr) {
+    const sect = document.getElementById('response-section');
+    const badgeClass = status >= 200 && status < 300 ? 'status-ok' : status >= 400 ? 'status-err' : 'status-warn';
+    const pretty = JSON.stringify(data, null, 2);
+
+    sect.innerHTML = `
+      <div class="response-section">
+        <div class="response-header">
+          <span class="status-badge ${badgeClass}">${status || 'ERR'}</span>
+          <span class="response-time">${elapsed}ms</span>
+          <button class="copy-btn" onclick="copyResponse()">Copy JSON</button>
+        </div>
+        <pre class="response-body ${isErr ? 'error' : ''}">${escHtml(pretty)}</pre>
+      </div>
+    `;
+  }
+
+  function copyResponse() {
+    if (lastResponse) navigator.clipboard.writeText(JSON.stringify(lastResponse, null, 2));
+    showToast('Copied!');
+  }
+
+  function clearToken() {
+    document.getElementById('global-token').value = '';
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function formatName(id) {
+    return id.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position: 'fixed', bottom: '24px', right: '24px',
+      background: '#2563eb', color: '#fff', padding: '8px 16px',
+      borderRadius: '8px', fontSize: '13px', fontWeight: '600',
+      zIndex: 9999, opacity: '1', transition: 'opacity 0.4s'
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 2000);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(ls empty:*)",
+      "Bash(curl:*)",
+      "Bash(nslookup:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(npm start:*)",
+      "Bash(node:*)",
+      "Bash(cd:*)",
+      "Bash(tree:*)"
+    ]
+  }
+}

@@ -8,7 +8,7 @@ import  Lab  from '../models/lab.js';
 import  Test  from '../models/test.js';
 import  Booking  from '../models/booking.js';
 
-import { authenticate, COOKIE_PASSWORD, sessionStore } from './config.js';
+import { authenticate, COOKIE_PASSWORD, createSessionStore } from './config.js';
 import { dark, light } from '@adminjs/themes';
 
 AdminJS.registerAdapter(AdminJSMongoose);
@@ -32,7 +32,7 @@ export const admin = new AdminJS({
     {
       resource: Lab,
       options: {
-        listProperties: ['name', 'location'],
+        listProperties: ['name', 'address', 'email', 'phone', 'isVerified', 'location.coordinates'],
       }
     },
     {
@@ -44,7 +44,7 @@ export const admin = new AdminJS({
     {
       resource: Booking,
       options: {
-        listProperties: ['user', 'lab', 'tests', 'date', 'status'],
+        listProperties: ['user', 'lab', 'tests', 'scheduledDate', 'status', 'totalAmount'],
       }
     },
   ],
@@ -60,24 +60,29 @@ export const admin = new AdminJS({
 });
 
 export const buildAdminRouter= async(app)=>{
-await AdminJSFastify.buildAuthenticatedRouter(
-    admin,
-    {
-         authenticate,
-         cookiePassword:COOKIE_PASSWORD,
-         cookieName:"adminjs"
-    },
-    app,
-    {
-        store:sessionStore,
-        saveUnintialized:true,
-        secret:COOKIE_PASSWORD,
-        cookie:{
-          httpOnly:process.env.NODE_ENV === "production",
-          secure:process.env.NODE_ENV === "production",
-        }
-    }
-)
+  const store = createSessionStore();
+  try {
+    await AdminJSFastify.buildAuthenticatedRouter(
+      admin,
+      {
+           authenticate,
+           cookiePassword:COOKIE_PASSWORD,
+           cookieName:"adminjs"
+      },
+      app,
+      {
+          store:store || undefined,
+          saveUnintialized:true,
+          secret:COOKIE_PASSWORD,
+          cookie:{
+            httpOnly:process.env.NODE_ENV === "production",
+            secure:process.env.NODE_ENV === "production",
+          }
+      }
+    )
+  } catch (error) {
+    console.log("AdminJS router initialization skipped due to error:", error?.message || error);
+  }
 }
 
 export default { admin };

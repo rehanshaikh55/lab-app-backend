@@ -2,164 +2,121 @@ import User from '../models/user.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import generateToken from '../utils/generateToken.js';
-import admin from '../config/firebase.js';
+import jwt from 'jsonwebtoken';
+import { generateAccessToken, generateRefreshToken } from '../utils/generateToken.js';
+import { JWT_REFRESH_SECRET, EMAIL_USER, EMAIL_PASS, FRONTEND_URL } from '../config/env.js';
+import { Errors } from '../common/errors.js';
 
-
-// Register
-export const register = async (request, reply) => {
-  try {
-    const { name, email, password, phone, address, role } = request.body;
-
-    const existing = await User.findOne({ email });
-    if (existing) return reply.code(400).send({ message: 'Email already in use' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      address,
-      role: role || 'user',
-    });
-
-    const token = generateToken(newUser._id);
-
-    return reply.code(201).send({ user: newUser, token });
-  } catch (err) {
-    return reply.code(500).send({ message: 'Registration failed', error: err.message });
-  }
-};
-
-// Login
-export const login = async (request, reply) => {
-  try {
-    const { email, password } = request.body;
-
-    const user = await User.findOne({ email });
-    if (!user) return reply.code(400).send({ message: 'Email doesnt Exist please register this email ' });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return reply.code(400).send({ message: 'Invalid email or password' });
-
-    const token = generateToken(user._id);
-
-    return reply.code(200).send({ user, token });
-  } catch (err) {
-    return reply.code(500).send({ message: 'Login failed', error: err.message });
-  }
-};
-
-// Mail Transporter
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: {
-    user: 'shaikhrehan1016@gmail.com',
-    pass: 'hpvm mfbe yozg wxyt', // App password
-  },
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
 });
 
-// Forgot Password
-export const forgotPassword = async (request, reply) => {
-  const { email } = request.body;
-
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return reply.code(404).send({ message: 'User not found' });
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
-
-    user.resetToken = resetToken;
-    user.resetTokenExpiry = resetTokenExpiry;
-    await user.save();
-
-    const resetURL = `http://localhost:3000/reset-password/${resetToken}`;
-
-    await transporter.sendMail({
-      from: 'shaikhrehan1016@gmail.com',
-      to: user.email,
-      subject: 'Password Reset',
-      html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link will expire in 1 hour.</p>`,
-    });
-
-    return reply.code(200).send({ message: 'Password reset email sent successfully' });
-  } catch (err) {
-    return reply.code(500).send({ message: 'Failed to send email', error: err.message });
+export const register = async (request, reply) => {
+  const { name, email, password, phone, role } = request.body;
+  const existing = await User.findOne({ email });
+  if (existing) {
+    const err = Errors.CONFLICT('Email already in use');
+    return reply.code(err.statusCode).send(err.toRFC7807());
   }
+  const passwordHash = await bcrypt.hash(password, 12);
+  const roles = role === 'LAB_OWNER' ? ['LAB_OWNER'] : ['CUSTOMER'];
+  const user = await User.create({ name, email, passwordHash, phone, roles });
+  const accessToken = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
+  user.refreshToken = await bcrypt.hash(refreshToken, 10);
+  await user.save();
+  return reply.code(201).send({
+    accessToken,
+    refreshToken,
+    user: { id: user._id, name: user.name, email: user.email, roles: user.roles },
+  });
 };
 
-// Reset Password
+export const login = async (request, reply) => {
+  const { email, password } = request.body;
+  const user = await User.findOne({ email });
+  if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+    const err = Errors.UNAUTHORIZED();
+    return reply.code(err.statusCode).send(err.toRFC7807());
+  }
+  const accessToken = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
+  user.refreshToken = await bcrypt.hash(refreshToken, 10);
+  user.lastLoginAt = new Date();
+  await user.save();
+  return reply.code(200).send({
+    accessToken,
+    refreshToken,
+    user: { id: user._id, name: user.name, email: user.email, roles: user.roles },
+  });
+};
+
+export const refresh = async (request, reply) => {
+  const { refreshToken } = request.body;
+  if (!refreshToken) {
+    const err = Errors.UNAUTHORIZED();
+    return reply.code(err.statusCode).send(err.toRFC7807());
+  }
+  let decoded;
+  try {
+    decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+  } catch {
+    const err = Errors.UNAUTHORIZED();
+    return reply.code(err.statusCode).send(err.toRFC7807());
+  }
+  const user = await User.findById(decoded.id);
+  if (!user || !user.refreshToken || !(await bcrypt.compare(refreshToken, user.refreshToken))) {
+    const err = Errors.UNAUTHORIZED();
+    return reply.code(err.statusCode).send(err.toRFC7807());
+  }
+  const newAccessToken = generateAccessToken(user._id);
+  const newRefreshToken = generateRefreshToken(user._id);
+  user.refreshToken = await bcrypt.hash(newRefreshToken, 10);
+  await user.save();
+  return reply.code(200).send({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+};
+
+export const logout = async (request, reply) => {
+  request.user.refreshToken = null;
+  await request.user.save();
+  return reply.code(200).send({ message: 'Logged out successfully' });
+};
+
+export const forgotPassword = async (request, reply) => {
+  const { email } = request.body;
+  const user = await User.findOne({ email });
+  // Always return same message to prevent email enumeration
+  if (!user) return reply.code(200).send({ message: 'If that email exists, a reset link was sent' });
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  user.resetToken = resetToken;
+  user.resetTokenExpiry = Date.now() + 3600000; // 1 hour
+  await user.save();
+  const resetURL = `${FRONTEND_URL}/reset-password/${resetToken}`;
+  try {
+    await transporter.sendMail({
+      from: EMAIL_USER,
+      to: user.email,
+      subject: 'Password Reset — Labzy',
+      html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link expires in 1 hour.</p>`,
+    });
+  } catch (e) {
+    request.log.error({ err: e }, 'Failed to send reset email');
+  }
+  return reply.code(200).send({ message: 'If that email exists, a reset link was sent' });
+};
+
 export const resetPassword = async (request, reply) => {
   const { token } = request.params;
   const { newPassword } = request.body;
-
-  try {
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() },
-    });
-
-    if (!user) return reply.code(400).send({ message: 'Invalid or expired token' });
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    user.resetToken = undefined;
-    user.resetTokenExpiry = undefined;
-    await user.save();
-
-    return reply.code(200).send({ message: 'Password has been reset successfully' });
-  } catch (err) {
-    return reply.code(500).send({ message: 'Failed to reset password', error: err.message });
+  const user = await User.findOne({ resetToken: token, resetTokenExpiry: { $gt: Date.now() } });
+  if (!user) {
+    const err = Errors.VALIDATION_ERROR('Invalid or expired reset token');
+    return reply.code(err.statusCode).send(err.toRFC7807());
   }
-};
-
-
-
-export const firebaseLogin = async (request, reply) => {
-  const { idToken } = request.body;
-  if (!idToken) {
-    return reply.code(400).send({ message: 'Missing idToken in request body' });
-  }
-
-  try {
-    // Verify the ID token with Firebase
-    const decoded = await admin.auth().verifyIdToken(idToken);
-
-    // Return only the Firebase user claims
-    return reply.code(200).send({
-      uid: decoded.uid,
-      email: decoded.email,
-      emailVerified: decoded.email_verified,
-      name: decoded.name,
-      picture: decoded.picture,
-      provider: decoded.firebase.sign_in_provider,
-    });
-  } catch (err) {
-    return reply.code(401).send({
-      message: 'Firebase login failed',
-      error: err.message,
-    });
-  }
-};
-
-// (Optional) Revoke all refresh tokens for a user (force logout)
-export const revokeTokens = async (request, reply) => {
-  const authHeader = request.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return reply.code(401).send({ message: 'Missing Firebase ID token' });
-  }
-  const idToken = authHeader.split('Bearer ')[1];
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(idToken);
-    await admin.auth().revokeRefreshTokens(decoded.uid);
-    return reply.code(200).send({ message: 'Tokens revoked successfully' });
-  } catch (err) {
-    return reply.code(500).send({
-      message: 'Failed to revoke tokens',
-      error: err.message,
-    });
-  }
+  user.passwordHash = await bcrypt.hash(newPassword, 12);
+  user.resetToken = undefined;
+  user.resetTokenExpiry = undefined;
+  await user.save();
+  return reply.code(200).send({ message: 'Password reset successfully' });
 };

@@ -1,0 +1,14 @@
+export const PORT = parseInt(process.env.PORT) || 3000;
+export const NODE_ENV = process.env.NODE_ENV || 'development';
+export const JWT_SECRET = process.env.JWT_SECRET;
+export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (process.env.JWT_SECRET + '_refresh');
+export const MONGO_URI = process.env.MONGO_URI;
+export const DB_NAME = process.env.DB_NAME || 'labzy';
+export const COOKIE_PASSWORD = process.env.COOKIE_PASSWORD;
+export const EMAIL_USER = process.env.EMAIL_USER;
+export const EMAIL_PASS = process.env.EMAIL_PASS;
+export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+export const FIREBASE_SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+export const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET;
+export const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+export const FCM_ENABLED = process.env.FCM_ENABLED === 'true';
