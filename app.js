@@ -12,7 +12,7 @@ import { JWT_SECRET } from './config/env.js';
 const start = async () => {
   if (!JWT_SECRET) {
     console.error('FATAL: JWT_SECRET environment variable is not set');
-    process.exit(1);
+    throw new Error('JWT_SECRET environment variable is not set');
   }
   await connectDB(process.env.MONGO_URI);
   const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'info' : 'debug' } });
