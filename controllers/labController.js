@@ -4,6 +4,106 @@ import Booking from '../models/booking.js';
 import { Errors } from '../common/errors.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+export const getTests = asyncHandler(async (request, reply) => {
+  const {
+    q,
+    category,
+    minPrice,
+    maxPrice,
+    sortBy = 'price',
+    order = 'asc',
+    page = 1,
+    limit = 20,
+  } = request.query;
+
+  const filter = { isActive: true };
+
+  // Full-text search on name + category
+  if (q) {
+    filter.$text = { $search: q };
+  } else if (category) {
+    // category-only filter (case-insensitive)
+    filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
+  }
+
+  // Price range
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    filter.price = {};
+    if (minPrice !== undefined) filter.price.$gte = parseFloat(minPrice);
+    if (maxPrice !== undefined) filter.price.$lte = parseFloat(maxPrice);
+  }
+
+  const sortOrder = order === 'desc' ? -1 : 1;
+  const allowedSort = ['price', 'name', 'turnaroundHours', 'createdAt'];
+  const sortField = allowedSort.includes(sortBy) ? sortBy : 'price';
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const lim  = Math.min(parseInt(limit), 100); // cap at 100
+
+  const [tests, total] = await Promise.all([
+    Test.find(filter)
+      .populate('lab', 'name address rating certifications isActive')
+      .select('-__v')
+      .sort({ [sortField]: sortOrder })
+      .skip(skip)
+      .limit(lim),
+    Test.countDocuments(filter),
+  ]);
+
+  return reply.code(200).send({
+    tests,
+    total,
+    page: parseInt(page),
+    limit: lim,
+    pages: Math.ceil(total / lim),
+  });
+});
+
+export const getAllLabs = asyncHandler(async (request, reply) => {
+  const {
+    search,
+    isActive,
+    isVerified,
+    city,
+    sortBy = 'createdAt',
+    order = 'desc',
+    page = 1,
+    limit = 20,
+  } = request.query;
+
+  const filter = {};
+
+  if (isActive !== undefined) filter.isActive = isActive === 'true' || isActive === true;
+  if (isVerified !== undefined) filter.isVerified = isVerified === 'true' || isVerified === true;
+  if (city) filter['address.city'] = { $regex: new RegExp(city, 'i') };
+  if (search) filter.name = { $regex: new RegExp(search, 'i') };
+
+  const allowedSort = ['name', 'rating', 'createdAt'];
+  const sortField = allowedSort.includes(sortBy) ? sortBy : 'createdAt';
+  const sortOrder = order === 'asc' ? 1 : -1;
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const lim = Math.min(parseInt(limit), 100);
+
+  const [labs, total] = await Promise.all([
+    Lab.find(filter)
+      .populate('owner', 'name email phone')
+      .select('-__v')
+      .sort({ [sortField]: sortOrder })
+      .skip(skip)
+      .limit(lim),
+    Lab.countDocuments(filter),
+  ]);
+
+  return reply.code(200).send({
+    labs,
+    total,
+    page: parseInt(page),
+    limit: lim,
+    pages: Math.ceil(total / lim),
+  });
+});
+
 export const getNearbyLabs = asyncHandler(async (request, reply) => {
   const { lat, lng, radius = 5000, minRating, page = 1, limit = 20 } = request.query;
   const query = {
