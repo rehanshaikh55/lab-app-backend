@@ -1,0 +1,189 @@
+================================================================================
+LABZY BACKEND — COMPREHENSIVE CODE REVIEW SUMMARY
+Date: 2026-03-20
+Reviewer: Claude Code Reviewer (Haiku 4.5)
+================================================================================
+
+OVERVIEW
+========
+Reviewed all 36 files across config, models, routes, controllers, middleware,
+services, and jobs. Codebase is well-structured with strong Fastify + Mongoose
+patterns, but 3 CRITICAL bugs must be fixed before any deployment.
+
+VERDICT: ⚠️ APPROVED WITH CRITICAL FIXES REQUIRED
+
+================================================================================
+CRITICAL ISSUES (MUST FIX)
+================================================================================
+
+[CRITICAL-1] FirebaseStorageAdapter Not Exported
+File: integrations/storage/storage.js:37
+Issue: Class instantiated but not exported; controllers try to import it
+Impact: Runtime failure on report uploads
+Fix: Add "export" to class declaration
+
+[CRITICAL-2] RBAC Middleware Missing Return Statement
+File: middlewares/rbacMiddleware.js:11
+Issue: Fastify preHandler must return; missing return causes requests to hang
+Impact: All /partner and role-protected routes silently fail
+Fix: Add "return;" after permission check success
+
+[CRITICAL-3] Mongoose Subdocument Query Bug
+File: controllers/bookingController.js:62
+Issue: Uses non-existent .addresses.id() method
+Impact: HOME collection bookings crash when fetching address
+Fix: Replace with .addresses.find(a => a._id.toString() === id)
+
+================================================================================
+HIGH-PRIORITY ISSUES (SHOULD FIX)
+================================================================================
+
+[HIGH-1] Missing Try/Catch in 20+ Routes
+Files: profileController, subscriptionController, labController, partnerController
+Impact: Unhandled database errors crash requests
+Affected: 20+ async route handlers
+Fix: Wrap all DB operations in try/catch blocks
+
+[HIGH-2] Configuration Duplication
+Files: config/env.js vs config/config.js
+Issue: PORT and COOKIE_PASSWORD exported twice with different logic
+Impact: Confusion about which is authoritative; hardcoded cookie password
+Fix: Single source of truth—remove config.js exports
+
+[HIGH-3] JWT_SECRET Not Validated on Startup
+File: config/env.js:3
+Issue: JWT_SECRET has no fallback; could be undefined
+Impact: Token verification silently fails
+Fix: Add validation that JWT_SECRET is set
+
+================================================================================
+MEDIUM-PRIORITY ISSUES (NICE TO FIX)
+================================================================================
+
+[MEDIUM-1] console.log Used Instead of request.log
+Files: config (3×), firebase.js (3×), storage.js (1×)
+Impact: Logging inconsistency, hard to search logs
+Fix: Replace console.log with request.log or app.log
+
+[MEDIUM-2] Missing Input Validation Schemas
+Files: partnerRoutes (3 routes), profileRoutes (1 route)
+Impact: No validation on uploadReport, updateAssistant, setAssistantAvailability
+Fix: Add JSON schema validation blocks
+
+[MEDIUM-3] Firebase Initialization Race Condition
+File: config/firebase.js:6
+Issue: Concurrent calls could initialize twice
+Impact: Resource waste, potential SDK issues
+Fix: Use promise-based initialization pattern
+
+[MEDIUM-4] Subscription Job Doesn't Validate Lab Exists
+File: jobs/subscriptions.js:65
+Issue: Creates booking for deleted lab
+Impact: Orphaned bookings with null lab reference
+Fix: Cancel subscription if lab is deleted
+
+================================================================================
+WHAT'S DONE WELL
+================================================================================
+
+✓ RFC 7807 standardized error responses
+✓ Proper JWT token patterns (15m access, 7d refresh)
+✓ Tokens hashed before storage (good security)
+✓ RBAC well-structured and consistent
+✓ Booking state machine prevents invalid transitions
+✓ Mongoose indexes and relationships properly set up
+✓ Route validation via JSON schemas
+✓ Geospatial queries use correct 2dsphere patterns
+✓ Async/await with Promise.all for efficiency
+✓ Password hashing with bcryptjs (salt 10-12)
+✓ Password reset tokens have expiry
+✓ Email enumeration prevented in forgot-password
+✓ Booking/report access properly authorized
+✓ Idempotency keys prevent duplicate subscriptions
+
+================================================================================
+FILES REQUIRING CHANGES (BY SEVERITY)
+================================================================================
+
+CRITICAL (Fix immediately):
+  1. integrations/storage/storage.js — export class
+  2. middlewares/rbacMiddleware.js — add return statement
+  3. controllers/bookingController.js — fix address query
+
+HIGH (Fix before release):
+  4. profileController.js — add try/catch (7 functions)
+  5. subscriptionController.js — add try/catch (7 functions)
+  6. labController.js — add try/catch (4 functions)
+  7. partnerController.js — add try/catch (6 analytics functions)
+  8. reportController.js — add try/catch (1 function)
+  9. config/env.js & config/config.js — remove duplication
+  10. config/env.js — validate JWT_SECRET on startup
+
+MEDIUM (Fix before beta):
+  11. config/*.js, integrations/storage/storage.js — use request.log not console.log
+  12. partnerRoutes.js, profileRoutes.js — add missing validation schemas
+  13. config/firebase.js — fix race condition
+  14. jobs/subscriptions.js — validate lab exists
+
+================================================================================
+ESTIMATED EFFORT
+================================================================================
+
+Critical fixes:       1-2 hours
+High-priority fixes:  2-3 hours
+Medium fixes:         1-2 hours
+Testing all routes:   1-2 hours
+───────────────────────────────
+Total estimated:      5-9 hours
+
+================================================================================
+DETAILED FINDINGS
+================================================================================
+
+See CODE_REVIEW_REPORT.md for complete analysis with code examples and fixes.
+
+================================================================================
+CHECKLIST FOR DEVELOPER
+================================================================================
+
+Critical (Do Not Deploy Without):
+□ Export FirebaseStorageAdapter class
+□ Add return to requireRoles middleware
+□ Fix Mongoose addresses.find() query
+
+High (Do Before Production):
+□ Add try/catch to all controller functions
+□ Consolidate config to single source
+□ Add JWT_SECRET validation
+□ Test all protected routes work
+
+Medium (Before Beta):
+□ Replace console.log with request.log
+□ Add validation schemas to remaining routes
+□ Fix Firebase race condition
+□ Validate lab exists in subscription job
+□ Run full test suite
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+1. Add pre-commit hook to require try/catch in routes (eslint rule)
+2. Consolidate all config to env.js
+3. Add integration tests for subscription job
+4. Add tests for all RBAC-protected routes
+5. Document the booking state machine
+6. Add monitoring for subscription job failures
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Review CODE_REVIEW_REPORT.md for detailed analysis
+2. Fix all CRITICAL issues (3 files)
+3. Fix all HIGH issues (9 files)
+4. Run tests to verify fixes
+5. Deploy to staging
+6. Address MEDIUM issues before beta release
+
+================================================================================

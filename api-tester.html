@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Labzy API Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    header span { font-size: 12px; color: #7c85a2; background: #252836; padding: 3px 10px; border-radius: 20px; }
+
+    .layout { display: flex; height: calc(100vh - 57px); }
+
+    .sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: #13151f;
+      border-right: 1px solid #2d3148;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+    .sidebar-section { padding: 8px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #4a5275; }
+    .endpoint-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #b0bbd4;
+      font-size: 13px;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .endpoint-btn:hover { background: #1e2133; color: #fff; }
+    .endpoint-btn.active { background: #1e2a45; color: #60a5fa; }
+    .method-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      min-width: 42px;
+      text-align: center;
+    }
+    .GET    { background: #064e3b; color: #34d399; }
+    .POST   { background: #1e3a5f; color: #60a5fa; }
+    .PUT    { background: #4a2e00; color: #fbbf24; }
+    .DELETE { background: #4a0000; color: #f87171; }
+
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .token-bar {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .token-bar label { color: #7c85a2; white-space: nowrap; }
+    .token-bar input {
+      flex: 1;
+      background: #252836;
+      border: 1px solid #3a3f5c;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .token-bar input:focus { outline: none; border-color: #60a5fa; }
+    .token-clear {
+      background: none;
+      border: 1px solid #3a3f5c;
+      color: #7c85a2;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .token-clear:hover { color: #f87171; border-color: #f87171; }
+
+    .request-panel { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    .endpoint-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .endpoint-header h2 { font-size: 18px; font-weight: 600; }
+    .endpoint-description { color: #7c85a2; font-size: 13px; }
+    .url-display {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #a5b4fc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .url-display span { color: #7c85a2; }
+
+    .form-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .form-card-header {
+      background: #1e2133;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #7c85a2;
+      border-bottom: 1px solid #2d3148;
+    }
+    .form-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .field-group { display: flex; flex-direction: column; gap: 5px; }
+    .field-group label { font-size: 12px; color: #7c85a2; font-weight: 500; }
+    .field-group input, .field-group select, .field-group textarea {
+      background: #252836;
+      border: 1px solid #3a3f5c;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 8px 10px;
+      font-size: 13px;
+      width: 100%;
+      transition: border-color 0.15s;
+    }
+    .field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+      outline: none;
+      border-color: #60a5fa;
+    }
+    .field-group textarea { font-family: monospace; resize: vertical; min-height: 80px; }
+    .field-group select option { background: #252836; }
+
+    .send-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+      align-self: flex-start;
+    }
+    .send-btn:hover { background: #1d4ed8; }
+    .send-btn:disabled { background: #334155; cursor: not-allowed; }
+
+    .response-section { display: flex; flex-direction: column; gap: 10px; }
+    .response-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .status-badge {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .status-ok    { background: #064e3b; color: #34d399; }
+    .status-err   { background: #4a0000; color: #f87171; }
+    .status-warn  { background: #4a2e00; color: #fbbf24; }
+    .response-time { color: #7c85a2; }
+
+    .response-body {
+      background: #13151f;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 380px;
+      overflow-y: auto;
+      color: #a5f3c0;
+      line-height: 1.6;
+    }
+    .response-body.error { color: #f87171; }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid #3a3f5c;
+      color: #7c85a2;
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: auto;
+    }
+    .copy-btn:hover { color: #60a5fa; border-color: #60a5fa; }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #4a5275;
+      gap: 12px;
+    }
+    .empty-state svg { opacity: 0.4; }
+    .empty-state p { font-size: 14px; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" fill="#3b82f6"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".6"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".6"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5" fill="#3b82f6" opacity=".3"/>
+  </svg>
+  <h1>Labzy API Tester</h1>
+  <span>v2.0 — 41 endpoints</span>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+
+    <div class="sidebar-section">Auth</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('register')"><span class="method-badge POST">POST</span> Register</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('login')"><span class="method-badge POST">POST</span> Login</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('refresh')"><span class="method-badge POST">POST</span> Refresh Token</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('logout')"><span class="method-badge POST">POST</span> Logout</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('forgot-password')"><span class="method-badge POST">POST</span> Forgot Password</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('reset-password')"><span class="method-badge POST">POST</span> Reset Password</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Profile</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-profile')"><span class="method-badge GET">GET</span> My Profile</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-profile')"><span class="method-badge PUT">PUT</span> Update Profile</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('add-address')"><span class="method-badge POST">POST</span> Add Address</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-address')"><span class="method-badge PUT">PUT</span> Update Address</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('delete-address')"><span class="method-badge DELETE">DEL</span> Delete Address</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-location')"><span class="method-badge POST">POST</span> Update Location</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Labs</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('all-labs')"><span class="method-badge GET">GET</span> All Labs</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('nearby-labs')"><span class="method-badge GET">GET</span> Nearby Labs</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-lab')"><span class="method-badge GET">GET</span> Lab Details</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-lab-tests')"><span class="method-badge GET">GET</span> Lab Tests</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-lab-slots')"><span class="method-badge GET">GET</span> Lab Slots</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('search-tests')"><span class="method-badge GET">GET</span> Search Tests</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Bookings</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('create-booking')"><span class="method-badge POST">POST</span> Create Booking</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('list-bookings')"><span class="method-badge GET">GET</span> My Bookings</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-booking')"><span class="method-badge GET">GET</span> Booking Detail</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('cancel-booking')"><span class="method-badge POST">POST</span> Cancel Booking</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('booking-report')"><span class="method-badge GET">GET</span> Booking Report</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Subscriptions</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('create-subscription')"><span class="method-badge POST">POST</span> Create</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('list-subscriptions')"><span class="method-badge GET">GET</span> My Subscriptions</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-subscription')"><span class="method-badge GET">GET</span> Subscription Detail</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-subscription')"><span class="method-badge PUT">PUT</span> Update</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('pause-subscription')"><span class="method-badge POST">POST</span> Pause</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('resume-subscription')"><span class="method-badge POST">POST</span> Resume</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('cancel-subscription')"><span class="method-badge POST">POST</span> Cancel</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Partner</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('daily-bookings')"><span class="method-badge GET">GET</span> Daily Bookings</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('partner-bookings')"><span class="method-badge GET">GET</span> All Bookings</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('accept-booking')"><span class="method-badge POST">POST</span> Accept Booking</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('reject-booking')"><span class="method-badge POST">POST</span> Reject Booking</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('reassign-assistant')"><span class="method-badge POST">POST</span> Reassign Assistant</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('link-report')"><span class="method-badge POST">POST</span> Link Report</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('list-assistants')"><span class="method-badge GET">GET</span> List Assistants</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('create-assistant')"><span class="method-badge POST">POST</span> Create Assistant</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('update-assistant')"><span class="method-badge PUT">PUT</span> Update Assistant</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('analytics-overview')"><span class="method-badge GET">GET</span> Analytics Overview</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('revenue-analytics')"><span class="method-badge GET">GET</span> Revenue Analytics</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('slots-analytics')"><span class="method-badge GET">GET</span> Slots Analytics</button>
+    <button class="endpoint-btn" onclick="selectEndpoint('customer-history')"><span class="method-badge GET">GET</span> Customer History</button>
+
+    <div class="sidebar-section" style="margin-top:8px">Reports</div>
+    <button class="endpoint-btn" onclick="selectEndpoint('get-report')"><span class="method-badge GET">GET</span> Get Report</button>
+  </nav>
+
+  <div class="main">
+    <div class="token-bar">
+      <label>🔑 Bearer Token:</label>
+      <input type="text" id="global-token" placeholder="Auto-filled on login — or paste JWT here" />
+      <button class="token-clear" onclick="clearToken()">Clear</button>
+    </div>
+
+    <div class="request-panel" id="request-panel">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        <p>Select an endpoint from the sidebar to get started</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:3000/api';
+
+  const ENDPOINTS = {
+
+    // ── AUTH ──────────────────────────────────────────────────────────
+    register: {
+      method: 'POST', path: '/auth/register', auth: false,
+      description: 'Register a new CUSTOMER or LAB_OWNER account',
+      fields: [
+        { name: 'name',     label: 'Full Name',  type: 'text',     placeholder: 'John Doe' },
+        { name: 'email',    label: 'Email',      type: 'email',    placeholder: 'john@example.com' },
+        { name: 'password', label: 'Password',   type: 'password', placeholder: 'Min 6 chars' },
+        { name: 'phone',    label: 'Phone',      type: 'text',     placeholder: '+91 9876543210', optional: true },
+        { name: 'role',     label: 'Role',       type: 'select',   options: ['CUSTOMER', 'LAB_OWNER'], default: 'CUSTOMER' },
+      ]
+    },
+
+    login: {
+      method: 'POST', path: '/auth/login', auth: false,
+      description: 'Login — accessToken is auto-saved to the token bar',
+      fields: [
+        { name: 'email',    label: 'Email',    type: 'email',    placeholder: 'john@example.com' },
+        { name: 'password', label: 'Password', type: 'password', placeholder: 'Your password' },
+      ],
+      onSuccess: (data) => {
+        if (data.accessToken) {
+          document.getElementById('global-token').value = data.accessToken;
+          showToast('✅ accessToken saved!');
+        }
+      }
+    },
+
+    refresh: {
+      method: 'POST', path: '/auth/refresh', auth: false,
+      description: 'Exchange a refresh token for a new access + refresh token pair',
+      fields: [
+        { name: 'refreshToken', label: 'Refresh Token', type: 'text', placeholder: 'Paste refreshToken from login response' },
+      ]
+    },
+
+    logout: {
+      method: 'POST', path: '/auth/logout', auth: true,
+      description: 'Invalidate the current refresh token',
+      fields: []
+    },
+
+    'forgot-password': {
+      method: 'POST', path: '/auth/forgot-password', auth: false,
+      description: 'Send a password reset link to the email address',
+      fields: [
+        { name: 'email', label: 'Email', type: 'email', placeholder: 'john@example.com' },
+      ]
+    },
+
+    'reset-password': {
+      method: 'POST', path: '/auth/reset-password/:token', auth: false,
+      description: 'Set a new password using the token from the reset email',
+      fields: [
+        { name: 'token',       label: 'Reset Token (from email URL)', type: 'text',     placeholder: 'Paste token from email link', isPathParam: true },
+        { name: 'newPassword', label: 'New Password',                 type: 'password', placeholder: 'New password' },
+      ]
+    },
+
+    // ── PROFILE ───────────────────────────────────────────────────────
+    'get-profile': {
+      method: 'GET', path: '/me', auth: true,
+      description: 'Get the authenticated user\'s full profile',
+      fields: []
+    },
+
+    'update-profile': {
+      method: 'PUT', path: '/profile', auth: true,
+      description: 'Update name, phone, FCM token, gender, or birth date',
+      fields: [
+        { name: 'name',      label: 'Name',       type: 'text',   placeholder: 'John Doe',        optional: true },
+        { name: 'phone',     label: 'Phone',      type: 'text',   placeholder: '+91 9876543210',  optional: true },
+        { name: 'fcmToken',  label: 'FCM Token',  type: 'text',   placeholder: 'Firebase push token', optional: true },
+        { name: 'gender',    label: 'Gender',     type: 'select', options: ['', 'male', 'female', 'other', 'prefer_not_to_say'], optional: true },
+        { name: 'birthDate', label: 'Birth Date', type: 'date',   optional: true },
+      ]
+    },
+
+    'add-address': {
+      method: 'POST', path: '/addresses', auth: true,
+      description: 'Add a new delivery/home address to the profile',
+      layout: 'row',
+      fields: [
+        { name: 'label',   label: 'Label',    type: 'text', placeholder: 'Home / Office', optional: true },
+        { name: 'line1',   label: 'Line 1',   type: 'text', placeholder: '42 Park Street' },
+        { name: 'line2',   label: 'Line 2',   type: 'text', placeholder: 'Apt 5B',         optional: true },
+        { name: 'city',    label: 'City',     type: 'text', placeholder: 'Mumbai' },
+        { name: 'state',   label: 'State',    type: 'text', placeholder: 'Maharashtra' },
+        { name: 'zipCode', label: 'ZIP Code', type: 'text', placeholder: '400001' },
+        { name: 'country', label: 'Country',  type: 'text', placeholder: 'India',          optional: true },
+      ]
+    },
+
+    'update-address': {
+      method: 'PUT', path: '/addresses/:id', auth: true,
+      description: 'Update an existing address by its subdocument ID',
+      fields: [
+        { name: 'id',      label: 'Address ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'line1',   label: 'Line 1',     type: 'text', placeholder: '42 Park Street', optional: true },
+        { name: 'city',    label: 'City',       type: 'text', placeholder: 'Mumbai',          optional: true },
+        { name: 'state',   label: 'State',      type: 'text', placeholder: 'Maharashtra',     optional: true },
+        { name: 'zipCode', label: 'ZIP Code',   type: 'text', placeholder: '400001',          optional: true },
+      ]
+    },
+
+    'delete-address': {
+      method: 'DELETE', path: '/addresses/:id', auth: true,
+      description: 'Remove an address from the profile',
+      fields: [
+        { name: 'id', label: 'Address ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'update-location': {
+      method: 'POST', path: '/location', auth: true,
+      description: 'Set user\'s geolocation — provide address OR lat/lng',
+      fields: [
+        { name: 'address',   label: 'Address (text)',  type: 'text',   placeholder: 'Mumbai, India',  optional: true },
+        { name: 'latitude',  label: 'Latitude',        type: 'number', placeholder: '19.0760',        optional: true },
+        { name: 'longitude', label: 'Longitude',       type: 'number', placeholder: '72.8777',        optional: true },
+      ]
+    },
+
+    // ── LABS ──────────────────────────────────────────────────────────
+    'all-labs': {
+      method: 'GET', path: '/labs', auth: true,
+      description: 'Fetch all labs with optional filters for name, city, status, and sorting',
+      fields: [
+        { name: 'search',     label: 'Search (name)',  type: 'text',   placeholder: 'Medicity, Apollo…',  isQuery: true, optional: true },
+        { name: 'city',       label: 'City',           type: 'text',   placeholder: 'Mumbai, Delhi…',     isQuery: true, optional: true },
+        { name: 'isActive',   label: 'Is Active',      type: 'select', options: ['', 'true', 'false'],    isQuery: true, optional: true },
+        { name: 'isVerified', label: 'Is Verified',    type: 'select', options: ['', 'true', 'false'],    isQuery: true, optional: true },
+        { name: 'sortBy',     label: 'Sort By',        type: 'select', options: ['createdAt', 'name', 'rating'], isQuery: true, optional: true },
+        { name: 'order',      label: 'Order',          type: 'select', options: ['desc', 'asc'],          isQuery: true, optional: true },
+        { name: 'page',       label: 'Page',           type: 'number', placeholder: '1',                 isQuery: true, optional: true },
+        { name: 'limit',      label: 'Limit (max 100)', type: 'number', placeholder: '20',               isQuery: true, optional: true },
+      ]
+    },
+
+    'nearby-labs': {
+      method: 'GET', path: '/labs/nearby', auth: true,
+      description: 'Find active labs within radius. lat/lng are required.',
+      fields: [
+        { name: 'lat',       label: 'Latitude',        type: 'number', placeholder: '19.0760',  isQuery: true },
+        { name: 'lng',       label: 'Longitude',       type: 'number', placeholder: '72.8777',  isQuery: true },
+        { name: 'radius',    label: 'Radius (meters)', type: 'number', placeholder: '5000',     isQuery: true, optional: true },
+        { name: 'minRating', label: 'Min Rating',      type: 'number', placeholder: '3.5',      isQuery: true, optional: true },
+        { name: 'page',      label: 'Page',            type: 'number', placeholder: '1',        isQuery: true, optional: true },
+        { name: 'limit',     label: 'Limit',           type: 'number', placeholder: '20',       isQuery: true, optional: true },
+      ]
+    },
+
+    'get-lab': {
+      method: 'GET', path: '/labs/:id', auth: true,
+      description: 'Get full lab details including slot matrix and opening hours',
+      fields: [
+        { name: 'id', label: 'Lab ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'get-lab-tests': {
+      method: 'GET', path: '/labs/:id/tests', auth: true,
+      description: 'List all active tests offered by a lab',
+      fields: [
+        { name: 'id', label: 'Lab ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'get-lab-slots': {
+      method: 'GET', path: '/labs/:id/slots', auth: true,
+      description: 'Get available booking slots for a specific date',
+      fields: [
+        { name: 'id',   label: 'Lab ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'date', label: 'Date',   type: 'date', isQuery: true },
+      ]
+    },
+
+    'search-tests': {
+      method: 'GET', path: '/tests', auth: true,
+      description: 'Search all tests across all labs — filter by name, category, and price range',
+      fields: [
+        { name: 'q',        label: 'Search (name / category)',  type: 'text',   placeholder: 'CBC, Lipid, Blood…',   isQuery: true, optional: true },
+        { name: 'category', label: 'Category (exact)',          type: 'text',   placeholder: 'Blood, Urine, Cardiac', isQuery: true, optional: true },
+        { name: 'minPrice', label: 'Min Price (₹)',             type: 'number', placeholder: '100',                  isQuery: true, optional: true },
+        { name: 'maxPrice', label: 'Max Price (₹)',             type: 'number', placeholder: '2000',                 isQuery: true, optional: true },
+        { name: 'sortBy',   label: 'Sort By',                   type: 'select', options: ['price', 'name', 'turnaroundHours', 'createdAt'], isQuery: true, optional: true },
+        { name: 'order',    label: 'Order',                     type: 'select', options: ['asc', 'desc'],            isQuery: true, optional: true },
+        { name: 'page',     label: 'Page',                      type: 'number', placeholder: '1',                   isQuery: true, optional: true },
+        { name: 'limit',    label: 'Limit (max 100)',           type: 'number', placeholder: '20',                  isQuery: true, optional: true },
+      ]
+    },
+
+    // ── BOOKINGS ──────────────────────────────────────────────────────
+    'create-booking': {
+      method: 'POST', path: '/bookings', auth: true, role: 'CUSTOMER',
+      description: 'Create a new booking (slot hold for 15 min, status = PENDING)',
+      fields: [
+        { name: 'labId',          label: 'Lab ID',         type: 'text',   placeholder: 'MongoDB ObjectId' },
+        { name: 'testIds',        label: 'Test IDs (JSON array)', type: 'text', placeholder: '["id1","id2"]', isJson: true },
+        { name: 'scheduledDate',  label: 'Scheduled Date', type: 'date' },
+        { name: 'slotStart',      label: 'Slot Start (HH:MM)', type: 'text', placeholder: '10:00' },
+        { name: 'collectionType', label: 'Collection Type', type: 'select', options: ['IN_LAB', 'HOME'] },
+        { name: 'userAddressId',  label: 'Address ID (HOME only)', type: 'text', placeholder: 'Address ObjectId', optional: true },
+      ]
+    },
+
+    'list-bookings': {
+      method: 'GET', path: '/bookings', auth: true,
+      description: 'List the authenticated user\'s bookings',
+      fields: [
+        { name: 'status', label: 'Status (filter)', type: 'select', options: ['', 'PENDING', 'CONFIRMED', 'COLLECTED', 'COMPLETED', 'CANCELLED'], optional: true, isQuery: true },
+        { name: 'page',   label: 'Page',            type: 'number', placeholder: '1',  isQuery: true, optional: true },
+        { name: 'limit',  label: 'Limit',           type: 'number', placeholder: '20', isQuery: true, optional: true },
+      ]
+    },
+
+    'get-booking': {
+      method: 'GET', path: '/bookings/:id', auth: true,
+      description: 'Get full details of a single booking',
+      fields: [
+        { name: 'id', label: 'Booking ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'cancel-booking': {
+      method: 'POST', path: '/bookings/:id/cancel', auth: true,
+      description: 'Cancel a PENDING or CONFIRMED booking',
+      fields: [
+        { name: 'id',     label: 'Booking ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'reason', label: 'Reason',     type: 'text', placeholder: 'Changed plans',    optional: true },
+      ]
+    },
+
+    'booking-report': {
+      method: 'GET', path: '/bookings/:id/report', auth: true,
+      description: 'Get a signed Firebase Storage URL for the booking\'s report PDF',
+      fields: [
+        { name: 'id', label: 'Booking ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    // ── SUBSCRIPTIONS ─────────────────────────────────────────────────
+    'create-subscription': {
+      method: 'POST', path: '/subscriptions', auth: true, role: 'CUSTOMER',
+      description: 'Create a recurring test subscription',
+      fields: [
+        { name: 'labId',              label: 'Lab ID',             type: 'text',   placeholder: 'MongoDB ObjectId' },
+        { name: 'testId',             label: 'Test ID',            type: 'text',   placeholder: 'MongoDB ObjectId' },
+        { name: 'frequency',          label: 'Frequency',          type: 'select', options: ['MONTHLY', 'WEEKLY', 'CUSTOM'] },
+        { name: 'customIntervalDays', label: 'Custom Interval (days)', type: 'number', placeholder: '14', optional: true },
+        { name: 'startDate',          label: 'Start Date',         type: 'date',   optional: true },
+        { name: 'autoPayment',        label: 'Auto Payment',       type: 'select', options: ['false', 'true'], optional: true },
+      ]
+    },
+
+    'list-subscriptions': {
+      method: 'GET', path: '/subscriptions', auth: true,
+      description: 'List all subscriptions for the authenticated user',
+      fields: []
+    },
+
+    'get-subscription': {
+      method: 'GET', path: '/subscriptions/:id', auth: true,
+      description: 'Get a single subscription by ID',
+      fields: [
+        { name: 'id', label: 'Subscription ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'update-subscription': {
+      method: 'PUT', path: '/subscriptions/:id', auth: true,
+      description: 'Update frequency or autoPayment for a subscription',
+      fields: [
+        { name: 'id',                 label: 'Subscription ID',    type: 'text',   placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'frequency',          label: 'Frequency',          type: 'select', options: ['', 'MONTHLY', 'WEEKLY', 'CUSTOM'], optional: true },
+        { name: 'customIntervalDays', label: 'Custom Days',        type: 'number', placeholder: '14', optional: true },
+        { name: 'autoPayment',        label: 'Auto Payment',       type: 'select', options: ['', 'false', 'true'], optional: true },
+      ]
+    },
+
+    'pause-subscription': {
+      method: 'POST', path: '/subscriptions/:id/pause', auth: true,
+      description: 'Pause an ACTIVE subscription (stops the booking job)',
+      fields: [
+        { name: 'id', label: 'Subscription ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'resume-subscription': {
+      method: 'POST', path: '/subscriptions/:id/resume', auth: true,
+      description: 'Resume a PAUSED subscription (recalculates next booking date)',
+      fields: [
+        { name: 'id', label: 'Subscription ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'cancel-subscription': {
+      method: 'POST', path: '/subscriptions/:id/cancel', auth: true,
+      description: 'Permanently cancel a subscription',
+      fields: [
+        { name: 'id', label: 'Subscription ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    // ── PARTNER ───────────────────────────────────────────────────────
+    'daily-bookings': {
+      method: 'GET', path: '/partner/bookings/daily', auth: true, role: 'LAB_OWNER',
+      description: 'Get today\'s bookings for the authenticated lab owner',
+      fields: []
+    },
+
+    'partner-bookings': {
+      method: 'GET', path: '/partner/bookings', auth: true, role: 'LAB_OWNER',
+      description: 'Get all bookings for the lab with optional status filter',
+      fields: [
+        { name: 'status', label: 'Status (filter)', type: 'select', options: ['', 'PENDING', 'CONFIRMED', 'COLLECTED', 'COMPLETED', 'CANCELLED'], optional: true, isQuery: true },
+        { name: 'page',   label: 'Page',            type: 'number', placeholder: '1',  isQuery: true, optional: true },
+        { name: 'limit',  label: 'Limit',           type: 'number', placeholder: '20', isQuery: true, optional: true },
+      ]
+    },
+
+    'accept-booking': {
+      method: 'POST', path: '/partner/bookings/:id/accept', auth: true, role: 'LAB_OWNER',
+      description: 'Confirm a PENDING booking (PENDING → CONFIRMED)',
+      fields: [
+        { name: 'id', label: 'Booking ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    'reject-booking': {
+      method: 'POST', path: '/partner/bookings/:id/reject', auth: true, role: 'LAB_OWNER',
+      description: 'Reject a booking (→ CANCELLED)',
+      fields: [
+        { name: 'id',     label: 'Booking ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'reason', label: 'Reason',     type: 'text', placeholder: 'Slot not available', optional: true },
+      ]
+    },
+
+    'reassign-assistant': {
+      method: 'POST', path: '/partner/bookings/:id/reassign', auth: true, role: 'LAB_OWNER',
+      description: 'Assign or reassign a lab assistant to a booking',
+      fields: [
+        { name: 'id',          label: 'Booking ID',   type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'assistantId', label: 'Assistant ID', type: 'text', placeholder: 'MongoDB ObjectId' },
+      ]
+    },
+
+    'link-report': {
+      method: 'POST', path: '/partner/bookings/:id/report', auth: true, role: 'LAB_OWNER',
+      description: 'Link an uploaded Firebase Storage report to a booking (→ COMPLETED)',
+      fields: [
+        { name: 'id',       label: 'Booking ID',                 type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'uri',      label: 'Firebase Storage URI',       type: 'text', placeholder: 'reports/bookingId/timestamp.pdf' },
+        { name: 'checksum', label: 'SHA-256 Checksum',           type: 'text', placeholder: 'hex string from upload response' },
+        { name: 'testId',   label: 'Test ID (optional override)', type: 'text', placeholder: 'MongoDB ObjectId', optional: true },
+      ]
+    },
+
+    'list-assistants': {
+      method: 'GET', path: '/partner/assistants', auth: true, role: 'LAB_OWNER',
+      description: 'List all active lab assistants for the authenticated lab',
+      fields: []
+    },
+
+    'create-assistant': {
+      method: 'POST', path: '/partner/assistants', auth: true, role: 'LAB_OWNER',
+      description: 'Create a new lab assistant account linked to the lab',
+      fields: [
+        { name: 'name',   label: 'Name',    type: 'text', placeholder: 'Ravi Kumar' },
+        { name: 'phone',  label: 'Phone',   type: 'text', placeholder: '+91 9876543210' },
+        { name: 'userId', label: 'User ID (optional)', type: 'text', placeholder: 'Existing user ObjectId', optional: true },
+      ]
+    },
+
+    'update-assistant': {
+      method: 'PUT', path: '/partner/assistants/:id', auth: true, role: 'LAB_OWNER',
+      description: 'Update a lab assistant\'s name or phone',
+      fields: [
+        { name: 'id',    label: 'Assistant ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+        { name: 'name',  label: 'Name',         type: 'text', placeholder: 'Ravi Kumar',       optional: true },
+        { name: 'phone', label: 'Phone',        type: 'text', placeholder: '+91 9876543210',   optional: true },
+      ]
+    },
+
+    'analytics-overview': {
+      method: 'GET', path: '/partner/analytics/overview', auth: true, role: 'LAB_OWNER',
+      description: 'Revenue, booking counts, and top 5 tests for the lab',
+      fields: []
+    },
+
+    'revenue-analytics': {
+      method: 'GET', path: '/partner/analytics/revenue', auth: true, role: 'LAB_OWNER',
+      description: 'Day-by-day revenue breakdown for a date range',
+      fields: [
+        { name: 'from', label: 'From Date', type: 'date', isQuery: true, optional: true },
+        { name: 'to',   label: 'To Date',   type: 'date', isQuery: true, optional: true },
+      ]
+    },
+
+    'slots-analytics': {
+      method: 'GET', path: '/partner/analytics/slots', auth: true, role: 'LAB_OWNER',
+      description: 'Top 10 peak booking slots for the lab',
+      fields: []
+    },
+
+    'customer-history': {
+      method: 'GET', path: '/partner/customers/:customerId/history', auth: true, role: 'LAB_OWNER',
+      description: 'Full booking and billing history for a specific customer',
+      fields: [
+        { name: 'customerId', label: 'Customer ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+
+    // ── REPORTS ───────────────────────────────────────────────────────
+    'get-report': {
+      method: 'GET', path: '/reports/:id', auth: true,
+      description: 'Get a signed Firebase Storage URL for a report (15 min expiry)',
+      fields: [
+        { name: 'id', label: 'Report ID', type: 'text', placeholder: 'MongoDB ObjectId', isPathParam: true },
+      ]
+    },
+  };
+
+  let activeId = null;
+  let lastResponse = null;
+
+  function selectEndpoint(id) {
+    activeId = id;
+    document.querySelectorAll('.endpoint-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('onclick') === `selectEndpoint('${id}')`);
+    });
+    renderForm(id);
+  }
+
+  function renderForm(id) {
+    const ep = ENDPOINTS[id];
+    const panel = document.getElementById('request-panel');
+    const urlDisplay = ep.path.replace(/:(\w+)/g, '<span>:$1</span>');
+
+    // Group fields: path params first, then body/query
+    const pathFields  = (ep.fields || []).filter(f => f.isPathParam);
+    const otherFields = (ep.fields || []).filter(f => !f.isPathParam);
+
+    let fieldsHtml = '';
+
+    if (pathFields.length > 0) {
+      fieldsHtml += buildFieldCard('Path Parameters', pathFields);
+    }
+    if (otherFields.length > 0) {
+      const label = ep.method === 'GET' ? 'Query Parameters' : 'Request Body';
+      fieldsHtml += buildFieldCard(label, otherFields);
+    }
+
+    let roleBadge = ep.role
+      ? `<span class="method-badge" style="background:#3b1f6e;color:#c084fc;font-size:11px">ROLE: ${ep.role}</span>`
+      : '';
+    let authBadge = ep.auth
+      ? `<span style="font-size:12px;background:#1e3a2e;color:#4ade80;padding:3px 10px;border-radius:20px">🔒 Auth Required</span>`
+      : `<span style="font-size:12px;background:#252836;color:#7c85a2;padding:3px 10px;border-radius:20px">🌐 Public</span>`;
+
+    panel.innerHTML = `
+      <div class="endpoint-header">
+        <span class="method-badge ${ep.method}">${ep.method}</span>
+        <h2>${formatName(id)}</h2>
+        ${authBadge}
+        ${roleBadge}
+      </div>
+      <p class="endpoint-description">${ep.description}</p>
+      <div class="url-display">
+        <span style="color:#7c85a2">${BASE}</span>${urlDisplay}
+      </div>
+      ${fieldsHtml}
+      <button class="send-btn" onclick="sendRequest('${id}')" id="send-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+        Send Request
+      </button>
+      <div id="response-section"></div>
+    `;
+  }
+
+  function buildFieldCard(title, fields) {
+    let html = `<div class="form-card"><div class="form-card-header">${title}</div><div class="form-body"><div class="form-row">`;
+    fields.forEach(f => {
+      let input = '';
+      if (f.type === 'select') {
+        const opts = (f.options || []).map(o =>
+          `<option value="${o}"${o === f.default ? ' selected' : ''}>${o || '— none —'}</option>`
+        ).join('');
+        input = `<select id="field-${f.name}">${opts}</select>`;
+      } else if (f.type === 'date') {
+        input = `<input type="date" id="field-${f.name}" />`;
+      } else {
+        input = `<input type="${f.type}" id="field-${f.name}" placeholder="${f.placeholder || ''}" />`;
+      }
+      html += `
+        <div class="field-group">
+          <label>${f.label}${f.optional ? ' <em style="opacity:.5;font-style:normal">(optional)</em>' : ''}</label>
+          ${input}
+        </div>`;
+    });
+    html += `</div></div></div>`;
+    return html;
+  }
+
+  async function sendRequest(id) {
+    const ep = ENDPOINTS[id];
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Sending…`;
+
+    let path = ep.path;
+    const body = {};
+    const queryParams = {};
+
+    for (const f of ep.fields || []) {
+      const el = document.getElementById(`field-${f.name}`);
+      const raw = el ? el.value.trim() : '';
+      if (!raw) continue;
+
+      if (f.isPathParam) {
+        path = path.replace(`:${f.name}`, encodeURIComponent(raw));
+      } else if (f.isQuery) {
+        queryParams[f.name] = raw;
+      } else if (f.isJson) {
+        try { body[f.name] = JSON.parse(raw); } catch { body[f.name] = raw; }
+      } else if (f.name === 'slotStart') {
+        body.slot = { start: raw };
+      } else if (f.type === 'number' && raw !== '') {
+        body[f.name] = parseFloat(raw);
+      } else {
+        body[f.name] = raw;
+      }
+    }
+
+    let url = `${BASE}${path}`;
+    if (Object.keys(queryParams).length > 0) {
+      url += '?' + new URLSearchParams(queryParams).toString();
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    const token = document.getElementById('global-token').value.trim();
+    if (ep.auth && token) headers['Authorization'] = `Bearer ${token}`;
+
+    const options = { method: ep.method, headers };
+    if (ep.method !== 'GET' && ep.method !== 'DELETE') {
+      options.body = JSON.stringify(body);
+    }
+
+    const t0 = Date.now();
+    let status = 0, data = null, isErr = false;
+
+    try {
+      const res = await fetch(url, options);
+      status = res.status;
+      try { data = await res.json(); } catch { data = { raw: await res.text() }; }
+      isErr = !res.ok;
+      if (!isErr && ep.onSuccess) ep.onSuccess(data);
+    } catch (err) {
+      isErr = true;
+      data = { error: err.message, hint: 'Is the server running on localhost:3000?' };
+    }
+
+    const elapsed = Date.now() - t0;
+    lastResponse = data;
+    renderResponse(status, data, elapsed, isErr);
+
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg> Send Request`;
+  }
+
+  function renderResponse(status, data, elapsed, isErr) {
+    const sect = document.getElementById('response-section');
+    const badgeClass = status >= 200 && status < 300 ? 'status-ok' : status >= 400 ? 'status-err' : 'status-warn';
+    const pretty = JSON.stringify(data, null, 2);
+    sect.innerHTML = `
+      <div class="response-section">
+        <div class="response-header">
+          <span class="status-badge ${badgeClass}">${status || 'ERR'}</span>
+          <span class="response-time">${elapsed}ms</span>
+          <button class="copy-btn" onclick="copyResponse()">Copy JSON</button>
+        </div>
+        <pre class="response-body ${isErr ? 'error' : ''}">${escHtml(pretty)}</pre>
+      </div>`;
+  }
+
+  function copyResponse() {
+    if (lastResponse) navigator.clipboard.writeText(JSON.stringify(lastResponse, null, 2));
+    showToast('Copied!');
+  }
+
+  function clearToken() { document.getElementById('global-token').value = ''; }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function formatName(id) {
+    return id.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position: 'fixed', bottom: '24px', right: '24px',
+      background: '#2563eb', color: '#fff', padding: '8px 16px',
+      borderRadius: '8px', fontSize: '13px', fontWeight: '600',
+      zIndex: 9999, transition: 'opacity 0.4s'
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 2000);
+  }
+</script>
+</body>
+</html>

@@ -1,7 +1,12 @@
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET, JWT_REFRESH_SECRET } from '../config/env.js';
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+export const generateAccessToken = (userId) => {
+  return jwt.sign({ id: userId }, JWT_SECRET, { expiresIn: '15m' });
 };
 
-export default generateToken;
+export const generateRefreshToken = (userId) => {
+  return jwt.sign({ id: userId }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
+};
+
+export default generateAccessToken;
