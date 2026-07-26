@@ -1,0 +1,17 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Control sizing" subtitle="36 / 44 / 52 control heights · 44px minimum hit target" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 20px 16px; display: flex; gap: 16px; align-items: center; }
+  .c { display: inline-flex; align-items: center; justify-content: center; padding: 0 20px; border-radius: var(--radius-md); background: var(--teal-500); color: #fff; font-weight: var(--weight-bold); border: none; }
+  .meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-left: 8px; }
+</style>
+</head>
+<body>
+  <div><button class="c" style="height: var(--control-h-sm); font-size: 13px;">Small · 36</button></div>
+  <div><button class="c" style="height: var(--control-h-md); font-size: 15px;">Medium · 44</button></div>
+  <div><button class="c" style="height: var(--control-h-lg); font-size: 16px;">Large CTA · 52</button></div>
+  <span class="meta">--control-h-sm/md/lg · nothing tappable under 44px</span>
+</body>
+</html>

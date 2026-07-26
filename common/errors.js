@@ -51,4 +51,12 @@ export const Errors = {
     new DomainError('CONFLICT', 409, detail || 'Conflict'),
   VALIDATION_ERROR: (detail) =>
     new DomainError('VALIDATION_ERROR', 400, detail || 'Validation error'),
+  SERVICE_UNAVAILABLE: (detail) =>
+    new DomainError('SERVICE_UNAVAILABLE', 503, detail || 'Service unavailable'),
+  RESCHEDULE_CUTOFF_PASSED: (detail) =>
+    new DomainError('RESCHEDULE_CUTOFF_PASSED', 409, detail || 'Reschedule cutoff passed'),
+  RESCHEDULE_LIMIT_REACHED: (detail) =>
+    new DomainError('RESCHEDULE_LIMIT_REACHED', 409, detail || 'No more reschedules allowed'),
+  CANCELLATION_FEE_APPLICABLE: (detail) =>
+    new DomainError('CANCELLATION_FEE_APPLICABLE', 200, detail || 'Cancellation fee applies'),
 };

@@ -1,0 +1,278 @@
+<!-- @dsCard group="Patient app" viewport="390x780" name="User Registration" subtitle="Onboarding · Health profile · Family members" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labzy - Registration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:#E8EAEE;font-family:'Plus Jakarta Sans',-apple-system,sans-serif}
+body{display:flex;justify-content:center}
+#root{width:100%;max-width:430px;height:100vh;position:relative;overflow:hidden;background:#F5F6F8;box-shadow:0 20px 80px rgba(0,0,0,.25)}
+::-webkit-scrollbar{display:none}
+input,button{font-family:inherit;outline:none}
+button{cursor:pointer;border:none;background:none;padding:0}
+input{border:none;padding:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+/* ── TOKENS ── */
+const T={
+  brand:'#149584',brand2:'#107A6C',brandDark:'#0C6055',
+  brandSurf:'#EAF6F4',brandSurf2:'#D0ECE8',
+  fg:'#111827',fg2:'#374151',fg3:'#6B7280',fg4:'#9CA3AF',
+  border:'#E5E7EB',borderS:'#F3F4F6',
+  surf:'#FFFFFF',surfLow:'#F5F6F8',
+  ok:'#15803D',okS:'#DCFCE7',
+  warn:'#D97706',warnS:'#FEF3C7',
+  err:'#DC2626',errS:'#FEE2E2',
+  info:'#2563EB',infoS:'#DBEAFE',
+  purple:'#7C3AED',purpleS:'#EDE9FE',
+};
+const f="'Plus Jakarta Sans',sans-serif";
+const shadow='0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.06)';
+
+/* ── ICONS ── */
+const IC={
+  'chevron-left':[['path',{d:'m15 18-6-6 6-6'}]],
+  'chevron-right':[['path',{d:'m9 18 6-6-6-6'}]],
+  'plus':[['path',{d:'M5 12h14M12 5v14'}]],
+  'x':[['path',{d:'M18 6 6 18M6 6l12 12'}]],
+  'check':[['path',{d:'M20 6 9 17l-5-5'}]],
+  'user':[['circle',{cx:12,cy:8,r:4}],['path',{d:'M20 21a8 8 0 1 0-16 0'}]],
+  'users':[['path',{d:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'}],['circle',{cx:9,cy:7,r:4}],['path',{d:'M23 21v-2a4 4 0 0 0-3-3.87'}],['path',{d:'M16 3.13a4 4 0 0 1 0 7.75'}]],
+  'activity':[['polyline',{points:'22 12 18 12 15 21 9 3 6 12 2 12'}]],
+  'trash':[['polyline',{points:'3 6 5 6 21 6'}],['path',{d:'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'}],['line',{x1:10,y1:11,x2:10,y2:17}],['line',{x1:14,y1:11,x2:14,y2:17}]],
+};
+function Ico({n,s=18,c='currentColor',w=1.8,st}){
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...st}}>{(IC[n]||[]).map(([t,a],i)=>React.createElement(t,{key:i,...a}))}</svg>;
+}
+
+/* Pre-compute age options to avoid JSX parsing issues */
+const AGE_OPTIONS=Array.from({length:80},(_,i)=>({l:i+1,v:i+1}));
+
+function Logo({sz=20}){
+  return <span style={{fontFamily:f,fontStyle:'italic',fontWeight:800,fontSize:sz,letterSpacing:'-0.02em',lineHeight:1,userSelect:'none'}}><span style={{color:T.brand}}>LAB</span><span style={{color:T.fg}}>ZY</span></span>;
+}
+
+function Btn({variant='primary',size='md',icon,fw,disabled,children,style,onClick}){
+  const v={primary:{bg:T.brand,fg:'#fff',hov:T.brand2},secondary:{bg:T.brandSurf,fg:T.brand2,hov:T.brandSurf2},outline:{bg:'#fff',fg:T.fg,hov:T.surfLow},ghost:{bg:'transparent',fg:T.brand2,hov:T.brandSurf}}[variant]||{bg:T.brand,fg:'#fff',hov:T.brand2};
+  const s={sm:{h:36,px:'0 12px',fs:12,g:5},md:{h:44,px:'0 16px',fs:13,g:6},lg:{h:50,px:'0 18px',fs:14,g:7}}[size]||{h:44,px:'0 16px',fs:13,g:6};
+  const [hv,sh]=React.useState(false);
+  return <button disabled={disabled} onClick={disabled?undefined:onClick} onMouseEnter={()=>sh(true)} onMouseLeave={()=>sh(false)} style={{display:fw?'flex':'inline-flex',width:fw?'100%':undefined,alignItems:'center',justifyContent:'center',gap:s.g,height:s.h,padding:s.px,fontSize:s.fs,fontWeight:700,borderRadius:10,border:`1.5px solid ${v.bg}`,background:hv&&!disabled?v.hov:v.bg,color:v.fg,opacity:disabled?.45:1,transition:'all 130ms',...style}}>{icon&&<Ico n={icon} s={16}/>}{children}</button>;
+}
+
+function Input({label,type='text',placeholder,value,onChange,hint,error,required}){
+  return <div style={{marginBottom:12}}>
+    {label&&<label style={{display:'block',fontSize:12,fontWeight:700,color:T.fg,letterSpacing:'0.02em',marginBottom:6,textTransform:'uppercase'}}>{label} {required&&<span style={{color:T.err}}>*</span>}</label>}
+    <input type={type} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)} style={{width:'100%',height:44,padding:'0 14px',fontSize:13,fontWeight:500,color:T.fg,background:'#fff',border:`1.5px solid ${error?T.err:T.border}`,borderRadius:10,transition:'border 120ms',fontFamily:f}}/>
+    {error&&<div style={{fontSize:11,color:T.err,marginTop:4,fontWeight:500}}>{error}</div>}
+    {hint&&!error&&<div style={{fontSize:11,color:T.fg3,marginTop:3}}>{hint}</div>}
+  </div>;
+}
+
+function Select({label,options,value,onChange,required}){
+  return <div style={{marginBottom:12}}>
+    {label&&<label style={{display:'block',fontSize:12,fontWeight:700,color:T.fg,letterSpacing:'0.02em',marginBottom:6,textTransform:'uppercase'}}>{label} {required&&<span style={{color:T.err}}>*</span>}</label>}
+    <select value={value} onChange={e=>onChange(e.target.value)} style={{width:'100%',height:44,padding:'0 14px',fontSize:13,fontWeight:500,color:T.fg,background:'#fff',border:`1.5px solid ${T.border}`,borderRadius:10,fontFamily:f,cursor:'pointer',appearance:'none',paddingRight:30,backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center'}}>
+      <option value="">Select {label?.toLowerCase()}</option>
+      {options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  </div>;
+}
+
+/* ── SCREENS ── */
+
+function RegistrationScrn({onComplete}){
+  const [step,setStep]=React.useState(1);
+  const [form,setForm]=React.useState({
+    name:'',age:'',gender:'',weight:'',height:'',bloodGroup:'',
+    familyMembers:[],
+  });
+  const [errors,setErrors]=React.useState({});
+
+  const updateForm=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const validateStep1=()=>{
+    const e={};
+    if(!form.name.trim()) e.name='Name is required';
+    if(!form.age) e.age='Age is required';
+    if(!form.gender) e.gender='Gender is required';
+    if(!form.weight) e.weight='Weight is required';
+    if(!form.height) e.height='Height is required';
+    setErrors(e);
+    return Object.keys(e).length===0;
+  };
+
+  const addFamily=()=>{
+    setForm(f=>({...f,familyMembers:[...f.familyMembers,{id:Date.now(),name:'',relation:'',age:''}]}));
+  };
+  const removeFamily=id=>{
+    setForm(f=>({...f,familyMembers:f.familyMembers.filter(m=>m.id!==id)}));
+  };
+  const updateFamily=(id,k,v)=>{
+    setForm(f=>({...f,familyMembers:f.familyMembers.map(m=>m.id===id?{...m,[k]:v}:m)}));
+  };
+
+  const handleSubmit=()=>{
+    if(step===1){
+      if(validateStep1()) setStep(2);
+    }else{
+      if(form.familyMembers.length===0){
+        setErrors({family:'Add at least one family member or skip'});
+        return;
+      }
+      onComplete(form);
+    }
+  };
+
+  /* Progress */
+  const progress=step===1?50:100;
+
+  return(
+    <div style={{background:T.surfLow,height:'100vh',display:'flex',flexDirection:'column'}}>
+
+      {/* Header */}
+      <div style={{background:'#fff',paddingTop:14,borderBottom:`1px solid ${T.borderS}`}}>
+        <div style={{display:'flex',alignItems:'center',padding:'0 16px',height:46,gap:10}}>
+          {step===2&&<button onClick={()=>{setStep(1);setErrors({});}} style={{width:36,height:36,background:T.surfLow,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`}}><Ico n="chevron-left" s={17}/></button>}
+          <div style={{flex:1}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.fg}}>Complete Your Profile</div>
+            <div style={{fontSize:11,color:T.fg3,marginTop:1}}>Step {step} of 2</div>
+          </div>
+          <Logo sz={18}/>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{height:3,background:T.borderS,overflow:'hidden'}}>
+          <div style={{height:'100%',width:progress+'%',background:T.brand,transition:'width 300ms'}}/>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:'auto',padding:'20px 16px'}}>
+
+        {step===1?(
+          <>
+            <div style={{fontSize:14,fontWeight:800,color:T.fg,marginBottom:4}}>Your Health Info</div>
+            <div style={{fontSize:12,color:T.fg3,marginBottom:16}}>Help us understand your health profile</div>
+
+            <Input label="Full Name" placeholder="Asha Rao" value={form.name} onChange={v=>updateForm('name',v)} error={errors.name} required/>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+              <Select label="Age" options={AGE_OPTIONS} value={form.age} onChange={v=>updateForm('age',v)} error={errors.age} required/>
+              <Select label="Gender" options={[{l:'Male',v:'M'},{l:'Female',v:'F'},{l:'Other',v:'O'}]} value={form.gender} onChange={v=>updateForm('gender',v)} error={errors.gender} required/>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+              <Input label="Weight (kg)" type="number" placeholder="65" value={form.weight} onChange={v=>updateForm('weight',v)} error={errors.weight} required/>
+              <Input label="Height (cm)" type="number" placeholder="165" value={form.height} onChange={v=>updateForm('height',v)} error={errors.height} required/>
+            </div>
+
+            <Select label="Blood Group" options={[{l:'A+',v:'A+'},{l:'A-',v:'A-'},{l:'B+',v:'B+'},{l:'B-',v:'B-'},{l:'O+',v:'O+'},{l:'O-',v:'O-'},{l:'AB+',v:'AB+'},{l:'AB-',v:'AB-'},{l:'Not sure',v:'unknown'}]} value={form.bloodGroup} onChange={v=>updateForm('bloodGroup',v)}/>
+
+            <div style={{fontSize:11,color:T.fg3,background:T.brandSurf,border:`1px solid ${T.brandSurf2}`,borderRadius:10,padding:'10px 12px',marginTop:12,lineHeight:1.5}}>
+              💡 This info helps labs prepare accurate tests & understand your health better.
+            </div>
+          </>
+        ):(
+          <>
+            <div style={{fontSize:14,fontWeight:800,color:T.fg,marginBottom:4}}>Family Members</div>
+            <div style={{fontSize:12,color:T.fg3,marginBottom:16}}>Add people you want to track (optional)</div>
+
+            {errors.family&&<div style={{background:T.errS,border:`1px solid ${T.err}`,color:T.err,borderRadius:10,padding:'10px 12px',marginBottom:12,fontSize:11,fontWeight:600}}>{errors.family}</div>}
+
+            {/* Members list */}
+            <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+              {form.familyMembers.map(m=>(
+                <div key={m.id} style={{background:'#fff',border:`1px solid ${T.borderS}`,borderRadius:14,padding:'12px',boxShadow:shadow}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                    <Ico n="users" s={18} c={T.brand}/>
+                    <Input label="" placeholder="Name" value={m.name} onChange={v=>updateFamily(m.id,'name',v)} required style={{marginBottom:0}}/>
+                    <button onClick={()=>removeFamily(m.id)} style={{width:34,height:34,borderRadius:9,background:T.errS,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`,color:T.err,flexShrink:0}}><Ico n="x" s={15}/></button>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                    <Select label="Relation" options={[{l:'Father',v:'father'},{l:'Mother',v:'mother'},{l:'Spouse',v:'spouse'},{l:'Child',v:'child'},{l:'Sibling',v:'sibling'},{l:'Parent',v:'parent'},{l:'Other',v:'other'}]} value={m.relation} onChange={v=>updateFamily(m.id,'relation',v)} required/>
+                    <Select label="Age" options={AGE_OPTIONS} value={m.age} onChange={v=>updateFamily(m.id,'age',v)} required/>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Btn variant="outline" fw icon="plus" onClick={addFamily}>Add Another Member</Btn>
+
+            <div style={{fontSize:11,color:T.fg3,background:T.infoS,border:`1px solid #BFDBFE`,borderRadius:10,padding:'10px 12px',marginTop:12,lineHeight:1.5}}>
+              💡 Family members can share tests & get personalized health insights.
+            </div>
+          </>
+        )}
+
+      </div>
+
+      {/* Footer CTA */}
+      <div style={{padding:'12px 16px 20px',background:'rgba(245,246,248,.95)',borderTop:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:8}}>
+        {step===1&&<Btn fw size="lg" onClick={handleSubmit}>Next: Family Members</Btn>}
+        {step===2&&<>
+          <Btn fw size="lg" onClick={handleSubmit}>Complete Registration</Btn>
+          <Btn fw size="lg" variant="outline" onClick={handleSubmit}>Skip & Continue</Btn>
+        </>}
+      </div>
+
+    </div>
+  );
+}
+
+/* ── APP ── */
+function App(){
+  const [completed,setCompleted]=React.useState(false);
+  const [data,setData]=React.useState(null);
+
+  const handleComplete=formData=>{
+    setData(formData);
+    setCompleted(true);
+    console.log('Registration complete:', formData);
+  };
+
+  return(
+    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:T.surfLow}}>
+      {!completed?(
+        <RegistrationScrn onComplete={handleComplete}/>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,padding:'20px'}}>
+          <div style={{fontSize:48,marginBottom:16}}>✓</div>
+          <div style={{fontSize:18,fontWeight:800,color:T.fg,marginBottom:6,textAlign:'center'}}>Registration Complete!</div>
+          <div style={{fontSize:13,color:T.fg3,marginBottom:20,textAlign:'center'}}>Welcome, {data?.name}. Let's book your first test.</div>
+          <div style={{background:'#fff',borderRadius:14,padding:'16px',border:`1px solid ${T.borderS}`,width:'100%',maxWidth:300,marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.fg4,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}}>Your Profile</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,fontSize:12}}>
+              <div><span style={{color:T.fg3}}>Age:</span> <strong style={{color:T.fg}}>{data?.age}</strong></div>
+              <div><span style={{color:T.fg3}}>Gender:</span> <strong style={{color:T.fg}}>{data?.gender}</strong></div>
+              <div><span style={{color:T.fg3}}>Weight:</span> <strong style={{color:T.fg}}>{data?.weight} kg</strong></div>
+              <div><span style={{color:T.fg3}}>Height:</span> <strong style={{color:T.fg}}>{data?.height} cm</strong></div>
+            </div>
+            {data?.familyMembers?.length>0&&<>
+              <div style={{fontSize:11,fontWeight:700,color:T.fg4,textTransform:'uppercase',letterSpacing:'0.05em',marginTop:12,marginBottom:8}}>Family Members ({data.familyMembers.length})</div>
+              {data.familyMembers.map(m=><div key={m.id} style={{fontSize:11,color:T.fg2}}>{m.name} <span style={{color:T.fg4}}>({m.relation}, {m.age} yrs)</span></div>)}
+            </>}
+          </div>
+          <Btn fw onClick={()=>setCompleted(false)}>← Edit Profile</Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

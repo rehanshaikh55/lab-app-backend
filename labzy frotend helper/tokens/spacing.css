@@ -1,0 +1,38 @@
+/* ============================================
+   Labzy — Spacing, radii & sizing tokens
+   4px base grid. Generous rounding (friendly,
+   non-intimidating healthcare).
+   ============================================ */
+
+:root {
+  /* ---- Space scale (4px grid) ---- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Corner radii ---- */
+  --radius-xs:   6px;   /* badges, small chips */
+  --radius-sm:   8px;   /* inputs (inner), tags */
+  --radius-md:   12px;  /* buttons, inputs */
+  --radius-lg:   16px;  /* cards */
+  --radius-xl:   24px;  /* sheets, hero panels */
+  --radius-full: 999px; /* pills, avatars, FAB */
+
+  /* ---- Control sizing ---- */
+  --control-h-sm: 36px;
+  --control-h-md: 44px;  /* min hit target */
+  --control-h-lg: 52px;  /* primary CTAs */
+  --hit-target:   44px;
+
+  /* ---- Layout ---- */
+  --screen-pad-x: 20px;  /* mobile screen gutter */
+  --card-pad:     16px;
+  --section-gap:  24px;
+}

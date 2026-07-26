@@ -12,3 +12,11 @@ export const FIREBASE_SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUN
 export const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET;
 export const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 export const FCM_ENABLED = process.env.FCM_ENABLED === 'true';
+const REQUIRED_ENV = ['JWT_SECRET', 'MONGO_URI', 'COOKIE_PASSWORD'];
+
+export const assertRequiredEnv = () => {
+  const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`FATAL: missing required env vars: ${missing.join(', ')}`);
+  }
+};

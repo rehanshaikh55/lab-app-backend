@@ -1,19 +1,24 @@
-import Report from '../models/report.js';
-import { storage } from '../integrations/storage/storage.js';
-import { Errors } from '../common/errors.js';
+import * as reportService from '../services/reportService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
-export const getReport = asyncHandler(async (request, reply) => {
-  const report = await Report.findById(request.params.id).populate('booking');
-  if (!report || !report.isAccessible) {
-    const err = Errors.REPORT_ACCESS_DENIED();
-    return reply.code(err.statusCode).send(err.toRFC7807());
-  }
-  // Verify user owns the booking
-  if (report.booking.user.toString() !== request.user._id.toString()) {
-    const err = Errors.REPORT_ACCESS_DENIED();
-    return reply.code(err.statusCode).send(err.toRFC7807());
-  }
-  const signedUrl = await storage.getSignedUrl(report.file.uri);
-  return reply.code(200).send({ signedUrl, issuedAt: report.issuedAt });
-});
+export const getReport = asyncHandler(async (request, reply) =>
+  reply.code(200).send(await reportService.getReportForUser({
+    userId: request.user._id,
+    reportId: request.params.id,
+  })));
+
+export const setRetestReminder = asyncHandler(async (request, reply) =>
+  reply.code(200).send(await reportService.setRetestReminder({
+    userId: request.user._id,
+    reportId: request.params.id,
+    intervalDays: request.body.intervalDays,
+  })));
+
+export const replaceReport = asyncHandler(async (request, reply) =>
+  reply.code(200).send({
+    report: await reportService.replaceReport({
+      userId: request.user._id,
+      oldReportId: request.params.reportId,
+      ...request.body,
+    }),
+  }));

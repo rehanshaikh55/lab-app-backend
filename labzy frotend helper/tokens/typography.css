@@ -1,0 +1,41 @@
+/* ============================================
+   Labzy — Typography tokens
+   UI face: Manrope (geometric, friendly-clinical,
+   closest Google match to the wordmark's geometry).
+   Wordmark face: Montserrat ExtraBold Italic
+   (nearest Google match to the logo lettering).
+   Data face: IBM Plex Mono — test values, IDs.
+   ============================================ */
+
+:root {
+  --font-sans: 'Manrope', -apple-system, 'Segoe UI', sans-serif;
+  --font-logo: 'Montserrat', 'Manrope', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
+
+  /* ---- Size scale (mobile-first) ---- */
+  --text-xs:   11px;  /* badges, overlines, tab labels */
+  --text-sm:   13px;  /* captions, hints, metadata */
+  --text-base: 15px;  /* body default */
+  --text-md:   17px;  /* emphasized body, list titles */
+  --text-lg:   20px;  /* section headings */
+  --text-xl:   24px;  /* screen titles */
+  --text-2xl:  28px;  /* hero numerals, greetings */
+  --text-3xl:  34px;  /* big stats / prices */
+
+  /* ---- Weights ---- */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-heavy:    800; /* headings + wordmark only */
+
+  /* ---- Line heights ---- */
+  --leading-tight:  1.2;  /* headings, numerals */
+  --leading-normal: 1.45; /* body */
+  --leading-loose:  1.6;  /* long-form / legal */
+
+  /* ---- Letter spacing ---- */
+  --tracking-tight:    -0.01em; /* lg+ headings */
+  --tracking-normal:   0;
+  --tracking-overline: 0.08em;  /* uppercase overlines */
+}

@@ -1,0 +1,389 @@
+<!-- @dsCard group="Partner app" viewport="390x780" name="Partner App" subtitle="Lab dashboard · Today view · Orders · Staff · Settings" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labzy Partner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:#E8EAEE;font-family:'Plus Jakarta Sans',-apple-system,sans-serif}
+body{display:flex;justify-content:center}
+#root{width:100%;max-width:430px;height:100vh;position:relative;overflow:hidden;background:#F5F6F8;box-shadow:0 20px 80px rgba(0,0,0,.22)}
+::-webkit-scrollbar{display:none}
+button{font-family:inherit;outline:none;cursor:pointer;border:none;background:none;padding:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+/* ── TOKENS ── */
+const T={
+  brand:'#149584',brand2:'#107A6C',brandDark:'#0C6055',
+  brandSurf:'#EAF6F4',brandSurf2:'#D0ECE8',
+  fg:'#111827',fg2:'#374151',fg3:'#6B7280',fg4:'#9CA3AF',
+  border:'#E5E7EB',borderS:'#F3F4F6',
+  surf:'#FFFFFF',surfLow:'#F5F6F8',
+  ok:'#15803D',okS:'#DCFCE7',
+  warn:'#D97706',warnS:'#FEF3C7',
+  err:'#DC2626',errS:'#FEE2E2',
+  info:'#2563EB',infoS:'#DBEAFE',
+  purple:'#7C3AED',purpleS:'#EDE9FE',
+};
+const f="'Plus Jakarta Sans',sans-serif";
+const fm="'IBM Plex Mono',monospace";
+const shadow='0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.06)';
+
+/* ── ICONS ── */
+const IC={
+  'home':[['path',{d:'m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'}],['polyline',{points:'9 22 9 12 15 12 15 22'}]],
+  'calendar':[['rect',{x:3,y:4,width:18,height:18,rx:2}],['path',{d:'M16 2v4M8 2v4M3 10h18'}]],
+  'user':[['circle',{cx:12,cy:8,r:4}],['path',{d:'M20 21a8 8 0 1 0-16 0'}]],
+  'sliders':[['line',{x1:21,y1:4,x2:14,y2:4}],['line',{x1:10,y1:4,x2:3,y2:4}],['line',{x1:21,y1:12,x2:12,y2:12}],['line',{x1:8,y1:12,x2:3,y2:12}],['line',{x1:21,y1:20,x2:16,y2:20}],['line',{x1:12,y1:20,x2:3,y2:20}],['line',{x1:14,y1:2,x2:14,y2:6}],['line',{x1:8,y1:10,x2:8,y2:14}],['line',{x1:16,y1:18,x2:16,y2:22}]],
+  'check':[['path',{d:'M20 6 9 17l-5-5'}]],
+  'x':[['path',{d:'M18 6 6 18M6 6l12 12'}]],
+  'plus':[['path',{d:'M5 12h14M12 5v14'}]],
+  'chevron-right':[['path',{d:'m9 18 6-6-6-6'}]],
+  'chevron-down':[['path',{d:'m6 9 6 6 6-6'}]],
+  'bell':[['path',{d:'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'}],['path',{d:'M10.3 21a1.94 1.94 0 0 0 3.4 0'}]],
+  'flask':[['path',{d:'M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2'}],['path',{d:'M8.5 2h7M7 16.5h10'}]],
+  'file-text':[['path',{d:'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'}],['path',{d:'M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8'}]],
+  'map-pin':[['path',{d:'M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z'}],['circle',{cx:12,cy:10,r:3}]],
+  'shield-check':[['path',{d:'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'}],['path',{d:'m9 12 2 2 4-4'}]],
+  'clock':[['circle',{cx:12,cy:12,r:10}],['polyline',{points:'12 6 12 12 16 14'}]],
+  'star':[['polygon',{points:'12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'}]],
+  'credit-card':[['rect',{x:2,y:5,width:20,height:14,rx:2}],['line',{x1:2,y1:10,x2:22,y2:10}]],
+  'trending-up':[['polyline',{points:'23 6 13.5 15.5 8.5 10.5 1 18'}],['polyline',{points:'17 6 23 6 23 12'}]],
+  'package':[['path',{d:'M16.5 9.4 7.55 4.24'}],['path',{d:'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'}],['polyline',{points:'3.29 7 12 12 20.71 7'}],['line',{x1:12,y1:22,x2:12,y2:12}]],
+  'activity':[['polyline',{points:'22 12 18 12 15 21 9 3 6 12 2 12'}]],
+  'droplet':[['path',{d:'M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z'}]],
+  'navigation':[['polygon',{points:'3 11 22 2 13 21 11 13 3 11'}]],
+};
+function Ico({n,s=20,c='currentColor',w=1.8,st}){
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...st}}>{(IC[n]||[]).map(([tag,a],i)=>React.createElement(tag,{key:i,...a}))}</svg>;
+}
+
+function Logo({sz=20}){
+  return <span style={{fontFamily:f,fontStyle:'italic',fontWeight:800,fontSize:sz,letterSpacing:'-0.02em',lineHeight:1,userSelect:'none'}}><span style={{color:T.brand}}>LAB</span><span style={{color:T.fg}}>ZY</span></span>;
+}
+
+function Av({name='',sz=40,style}){
+  const pal=[T.brand,'#2563EB','#7C3AED','#D97706','#DB2777','#15803D'];
+  const ini=name.split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase()||'?';
+  return <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:sz,height:sz,borderRadius:999,background:pal[(name.charCodeAt(0)||0)%pal.length],color:'#fff',fontSize:sz*.36,fontWeight:700,flexShrink:0,...style}}>{ini}</span>;
+}
+
+function Tag({tone='neutral',dot,children,style}){
+  const m={neutral:{bg:T.surfLow,fg:T.fg3},brand:{bg:T.brandSurf,fg:T.brand2},ok:{bg:T.okS,fg:T.ok},warn:{bg:T.warnS,fg:T.warn},err:{bg:T.errS,fg:T.err},info:{bg:T.infoS,fg:T.info},purple:{bg:T.purpleS,fg:T.purple},booked:{bg:T.infoS,fg:T.info},sampled:{bg:T.purpleS,fg:T.purple},processing:{bg:T.warnS,fg:T.warn},ready:{bg:T.okS,fg:T.ok}};
+  const t=m[tone]||m.neutral;
+  return <span style={{display:'inline-flex',alignItems:'center',gap:4,height:22,padding:'0 8px',borderRadius:99,fontSize:10,fontWeight:700,background:t.bg,color:t.fg,whiteSpace:'nowrap',...style}}>
+    {dot&&<span style={{width:5,height:5,borderRadius:99,background:'currentColor'}}/>}{children}
+  </span>;
+}
+
+const BV={primary:{bg:T.brand,fg:'#fff',hov:T.brand2,bor:'transparent'},secondary:{bg:T.brandSurf,fg:T.brand2,hov:T.brandSurf2,bor:T.brandSurf2},outline:{bg:'#fff',fg:T.fg,hov:T.surfLow,bor:T.border},ghost:{bg:'transparent',fg:T.brand2,hov:T.brandSurf,bor:'transparent'},danger:{bg:T.errS,fg:T.err,hov:'#FEE2E2',bor:T.errS}};
+const BS={sm:{h:34,px:'0 12px',fs:11,g:5,is:13},md:{h:42,px:'0 16px',fs:13,g:6,is:16},lg:{h:48,px:'0 20px',fs:14,g:7,is:17}};
+function Btn({variant='primary',size='md',icon,fw,disabled,children,style,onClick}){
+  const [hv,sHv]=React.useState(false);
+  const v=BV[variant]||BV.primary; const s=BS[size]||BS.md;
+  return <button disabled={disabled} onClick={disabled?undefined:onClick} onMouseEnter={()=>sHv(true)} onMouseLeave={()=>sHv(false)} style={{display:fw?'flex':'inline-flex',width:fw?'100%':undefined,alignItems:'center',justifyContent:'center',gap:s.g,height:s.h,padding:s.px,fontSize:s.fs,fontWeight:700,borderRadius:10,border:`1.5px solid ${v.bor}`,background:hv&&!disabled?v.hov:v.bg,color:v.fg,opacity:disabled?.45:1,transition:'all 130ms',...style}}>{icon&&<Ico n={icon} s={s.is}/>}{children}</button>;
+}
+
+function Toggle({checked,onChange,label}){
+  return <div onClick={()=>onChange(!checked)} style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+    <div style={{width:42,height:26,borderRadius:99,background:checked?T.brand:T.border,position:'relative',transition:'background 200ms',flexShrink:0}}>
+      <span style={{position:'absolute',top:3,left:checked?19:3,width:20,height:20,borderRadius:99,background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,.15)',transition:'left 200ms'}}/>
+    </div>
+    {label&&<span style={{fontSize:13,fontWeight:500,color:T.fg2}}>{label}</span>}
+  </div>;
+}
+
+/* ── LIQUID GLASS TAB BAR ── */
+function TabBar({tabs,active,onChange}){
+  return <div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',width:'calc(100% - 32px)',maxWidth:380,background:'rgba(255,255,255,0.72)',backdropFilter:'blur(48px) saturate(200%)',WebkitBackdropFilter:'blur(48px) saturate(200%)',borderRadius:28,border:'0.5px solid rgba(255,255,255,.95)',boxShadow:'0 16px 40px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.06),inset 0 1px 0 rgba(255,255,255,1)',padding:'6px 4px',display:'flex',zIndex:200}}>
+    {tabs.map(t=>{const on=t.key===active; return <button key={t.key} onClick={()=>onChange(t.key)} style={{flex:1,minHeight:52,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,background:on?T.brandSurf:'transparent',borderRadius:22,position:'relative',color:on?T.brand2:'rgba(17,24,39,.35)',transition:'all 200ms cubic-bezier(.2,.8,.3,1)'}}>
+      {t.badge>0&&<span style={{position:'absolute',top:8,right:'20%',minWidth:16,height:16,padding:'0 3px',borderRadius:99,background:T.err,color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',border:'1.5px solid rgba(255,255,255,.9)'}}>{t.badge}</span>}
+      <Ico n={t.icon} s={22} w={on?2.4:1.8}/><span style={{fontSize:9.5,fontWeight:on?700:500,lineHeight:1}}>{t.label}</span>
+    </button>;})}
+  </div>;
+}
+
+function ScreenHead({title,sub,right}){
+  return <div style={{background:'#fff',paddingTop:14,borderBottom:`1px solid ${T.borderS}`}}>
+    <div style={{display:'flex',alignItems:'center',padding:'0 16px',height:46,gap:10}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:17,fontWeight:800,color:T.fg,letterSpacing:'-0.02em'}}>{title}</div>
+        {sub&&<div style={{fontSize:11,color:T.fg3,marginTop:1}}>{sub}</div>}
+      </div>
+      {right}
+    </div>
+  </div>;
+}
+
+/* ── TODAY SCREEN ── */
+const STAGE_FLOW=['booked','sampled','processing','ready'];
+const STAGE_LABEL={booked:'Booked',sampled:'Sampled',processing:'Processing',ready:'Ready'};
+const STAGE_TONE={booked:'booked',sampled:'purple',processing:'warn',ready:'ok'};
+
+function TodayScrn({requests,onAccept,onDecline,orders,onAdvance}){
+  const stats=[{l:'Total today',v:orders.length+requests.length},{l:'Pending',v:requests.length},{l:'In progress',v:orders.filter(o=>o.stage!=='ready').length},{l:'Done',v:orders.filter(o=>o.stage==='ready').length}];
+  return <div style={{background:T.surfLow,minHeight:'100%'}}>
+    {/* Header */}
+    <div style={{background:'#fff',paddingTop:14,borderBottom:`1px solid ${T.borderS}`}}>
+      <div style={{display:'flex',alignItems:'center',padding:'0 16px',height:46,gap:10}}>
+        <Logo sz={20}/>
+        <div style={{flex:1}}/>
+        <Tag tone="ok" dot>Open · 7 AM–7 PM</Tag>
+        <button style={{width:34,height:34,background:T.surfLow,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`,marginLeft:6}}>
+          <Ico n="bell" s={16} c={T.fg}/>
+        </button>
+      </div>
+      <div style={{padding:'8px 16px 12px'}}>
+        <div style={{fontSize:11,color:T.brand,fontWeight:600,letterSpacing:'0.02em',marginBottom:2}}>SUN, 15 JUNE 2026</div>
+        <div style={{fontSize:20,fontWeight:800,color:T.fg,letterSpacing:'-0.02em'}}>HealthFirst Diagnostics</div>
+      </div>
+    </div>
+
+    <div style={{padding:'14px 16px 110px'}}>
+      {/* Stats row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:16}}>
+        {stats.map(s=><div key={s.l} style={{background:'#fff',borderRadius:12,padding:'10px 8px',textAlign:'center',border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+          <div style={{fontSize:20,fontWeight:800,color:T.fg,fontFamily:fm}}>{s.v}</div>
+          <div style={{fontSize:9.5,color:T.fg3,marginTop:2,lineHeight:1.3}}>{s.l}</div>
+        </div>)}
+      </div>
+
+      {/* New requests */}
+      {requests.length>0&&<>
+        <div style={{fontSize:11,fontWeight:700,color:T.fg3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>New requests ({requests.length})</div>
+        {requests.map(r=><div key={r.id} style={{background:'#fff',borderRadius:14,padding:'13px 14px',marginBottom:8,border:`1.5px solid ${T.brand}`,boxShadow:`0 0 0 3px ${T.brandSurf}`,position:'relative'}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10}}>
+            <Av name={r.patient} sz={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:800,color:T.fg}}>{r.patient}</div>
+              <div style={{fontSize:11,color:T.fg3,marginTop:1}}>{r.tests}</div>
+              <div style={{display:'flex',gap:6,marginTop:5}}>
+                <Tag tone="info">{r.mode}</Tag>
+                <Tag tone="neutral"><Ico n="clock" s={9}/> {r.slot}</Tag>
+              </div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.fg,fontFamily:fm}}>₹{r.amount}</div>
+              <div style={{fontFamily:fm,fontSize:9.5,color:T.fg4,marginTop:1}}>{r.id}</div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:7,borderTop:`1px solid ${T.borderS}`,paddingTop:10}}>
+            <Btn variant="danger" size="sm" icon="x" style={{flex:1}} onClick={()=>onDecline(r.id)}>Decline</Btn>
+            <Btn variant="primary" size="sm" icon="check" style={{flex:1}} onClick={()=>onAccept(r.id)}>Accept</Btn>
+          </div>
+        </div>)}
+      </>}
+
+      {/* Active orders */}
+      <div style={{fontSize:11,fontWeight:700,color:T.fg3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8,marginTop:requests.length>0?12:0}}>Active orders</div>
+      {orders.map(o=>{
+        const idx=STAGE_FLOW.indexOf(o.stage);
+        const nxt=STAGE_FLOW[idx+1];
+        return <div key={o.id} style={{background:'#fff',borderRadius:14,padding:'12px 14px',marginBottom:8,border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:8}}>
+            <Av name={o.patient} sz={38}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.fg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.patient}</div>
+              <div style={{fontSize:11,color:T.fg3,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.tests}</div>
+              <div style={{fontSize:10,fontFamily:fm,color:T.fg4,marginTop:2}}>{o.id} · {o.slot}</div>
+            </div>
+            <Tag tone={STAGE_TONE[o.stage]} dot>{STAGE_LABEL[o.stage]}</Tag>
+          </div>
+          {/* Mini progress bar */}
+          <div style={{display:'flex',gap:3,marginBottom:nxt?8:0}}>
+            {STAGE_FLOW.map((s,i)=><div key={s} style={{flex:1,height:3,borderRadius:2,background:i<=idx?T.brand:T.border,transition:'background 300ms'}}/>)}
+          </div>
+          {nxt&&<div style={{display:'flex',justifyContent:'flex-end'}}>
+            <Btn variant="secondary" size="sm" icon="check" onClick={()=>onAdvance(o.id)}>Mark {STAGE_LABEL[nxt]}</Btn>
+          </div>}
+          {!nxt&&<div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 8px',background:T.okS,borderRadius:8}}>
+            <Ico n="check" s={13} c={T.ok}/><span style={{fontSize:11,fontWeight:700,color:T.ok}}>Report ready — patient notified</span>
+          </div>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+/* ── ORDERS SCREEN ── */
+function OrdersScrn({orders,onAdvance}){
+  const [filter,setFilter]=React.useState('all');
+  const tabs=[{k:'all',l:'All'},{k:'booked',l:'Booked'},{k:'sampled',l:'Sampled'},{k:'processing',l:'Processing'},{k:'ready',l:'Ready'}];
+  const shown=filter==='all'?orders:orders.filter(o=>o.stage===filter);
+  return <div style={{background:T.surfLow,minHeight:'100%'}}>
+    <ScreenHead title="Orders" sub={`${orders.length} total today`} right={<button style={{width:34,height:34,background:T.surfLow,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`}}><Ico n="activity" s={15} c={T.fg}/></button>}/>
+    {/* Filter chips */}
+    <div style={{background:'#fff',borderBottom:`1px solid ${T.borderS}`,padding:'8px 16px',display:'flex',gap:6,overflowX:'auto'}}>
+      {tabs.map(t=><button key={t.k} onClick={()=>setFilter(t.k)} style={{height:30,padding:'0 12px',borderRadius:99,fontSize:11,fontWeight:700,border:`1.5px solid ${filter===t.k?T.brand:T.border}`,background:filter===t.k?T.brandSurf:'#fff',color:filter===t.k?T.brand2:T.fg3,whiteSpace:'nowrap',transition:'all 120ms'}}>{t.l}</button>)}
+    </div>
+    <div style={{padding:'12px 16px 110px',display:'flex',flexDirection:'column',gap:8}}>
+      {shown.length===0&&<div style={{textAlign:'center',padding:'40px 20px',color:T.fg4,fontSize:13}}>No orders in this stage</div>}
+      {shown.map(o=>{
+        const idx=STAGE_FLOW.indexOf(o.stage);
+        const nxt=STAGE_FLOW[idx+1];
+        return <div key={o.id} style={{background:'#fff',borderRadius:14,padding:'13px 14px',border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10}}>
+            <Av name={o.patient} sz={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.fg}}>{o.patient}</div>
+              <div style={{fontSize:11,color:T.fg3,marginTop:1}}>{o.tests}</div>
+              <div style={{fontFamily:fm,fontSize:10,color:T.fg4,marginTop:2}}>{o.id} · {o.slot}</div>
+              {o.assistant&&<div style={{fontSize:11,color:T.brand2,fontWeight:600,marginTop:3}}>Assigned: {o.assistant}</div>}
+            </div>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5}}>
+              <Tag tone={STAGE_TONE[o.stage]} dot>{STAGE_LABEL[o.stage]}</Tag>
+              {o.mode==='Home collection'&&<Tag tone="info">Home</Tag>}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:3,marginBottom:nxt?8:0}}>
+            {STAGE_FLOW.map((s,i)=><div key={s} style={{flex:1,height:3,borderRadius:2,background:i<=idx?T.brand:T.border}}/>)}
+          </div>
+          {nxt&&<div style={{display:'flex',gap:6,borderTop:`1px solid ${T.borderS}`,paddingTop:8}}>
+            <Btn variant="outline" size="sm" icon="file-text" style={{flex:1}}>Details</Btn>
+            <Btn variant="primary" size="sm" icon="check" style={{flex:1}} onClick={()=>onAdvance(o.id)}>Mark {STAGE_LABEL[nxt]}</Btn>
+          </div>}
+          {!nxt&&<div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',background:T.okS,borderRadius:8}}>
+            <Ico n="check" s={13} c={T.ok}/><span style={{fontSize:11,fontWeight:700,color:T.ok}}>Complete — report delivered</span>
+          </div>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+/* ── STAFF SCREEN ── */
+function StaffScrn(){
+  const staff=[{n:'Arjun Sharma',v:4,active:true},{n:'Meena Pillai',v:3,active:true},{n:'Dev Rathod',v:0,active:false}];
+  return <div style={{background:T.surfLow,minHeight:'100%'}}>
+    <ScreenHead title="Lab assistants" right={<Btn variant="primary" size="sm" icon="plus">Add</Btn>}/>
+    <div style={{padding:'14px 16px 110px',display:'flex',flexDirection:'column',gap:8}}>
+      {staff.map(a=><div key={a.n} style={{background:'#fff',borderRadius:14,padding:'13px 14px',border:`1px solid ${T.borderS}`,boxShadow:shadow,display:'flex',alignItems:'center',gap:12}}>
+        <Av name={a.n} sz={44}/>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:T.fg}}>{a.n}</div>
+          <div style={{fontSize:11,color:T.fg3,marginTop:1}}>{a.v} visits today</div>
+        </div>
+        <Tag tone={a.active?'ok':'neutral'} dot>{a.active?'Active':'Inactive'}</Tag>
+        <Ico n="chevron-right" s={14} c={T.fg4}/>
+      </div>)}
+      <div style={{background:'#fff',borderRadius:14,padding:'13px 14px',border:`1px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer',color:T.fg3,marginTop:4}}>
+        <Ico n="plus" s={16} c={T.fg3}/><span style={{fontSize:13,fontWeight:600}}>Add new assistant</span>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── SETTINGS SCREEN ── */
+function SettingsScrn(){
+  const [alerts,setAlerts]=React.useState(true);
+  const [digest,setDigest]=React.useState(true);
+  const rows1=[
+    {ic:'flask',t:'Test catalog & pricing',sub:'48 published tests'},
+    {ic:'clock',t:'Slot & capacity setup',sub:'In-lab: 4/hr · Home: 6/day'},
+    {ic:'shield-check',t:'Certifications',sub:'NABL verified ✓'},
+    {ic:'map-pin',t:'Service areas',sub:'3 km radius · 2 zones'},
+  ];
+  const rows2=[
+    {ic:'credit-card',t:'Earnings & settlements',sub:'₹12,840 due next cycle'},
+    {ic:'star',t:'Ratings & reviews',sub:'4.8 avg · 1,200+ reviews'},
+    {ic:'trending-up',t:'Analytics',sub:'View performance report'},
+  ];
+  return <div style={{background:T.surfLow,minHeight:'100%'}}>
+    <ScreenHead title="Settings"/>
+    <div style={{padding:'14px 16px 110px',display:'flex',flexDirection:'column',gap:10}}>
+      <div style={{background:'#fff',borderRadius:14,padding:'4px 14px',border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+        {rows1.map((r,i)=><div key={r.t} style={{display:'flex',alignItems:'center',gap:12,minHeight:52,padding:'8px 0',borderBottom:i<rows1.length-1?`1px solid ${T.borderS}`:'none',cursor:'pointer'}}>
+          <span style={{width:34,height:34,borderRadius:9,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',background:T.brandSurf,color:T.brand}}><Ico n={r.ic} s={15}/></span>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:T.fg}}>{r.t}</div><div style={{fontSize:11,color:T.fg3,marginTop:1}}>{r.sub}</div></div>
+          <Ico n="chevron-right" s={13} c={T.fg4}/>
+        </div>)}
+      </div>
+
+      <div style={{background:'#fff',borderRadius:14,padding:'14px',border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+        <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',color:T.fg4,marginBottom:12}}>Notifications</div>
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <Toggle checked={alerts} onChange={setAlerts} label="New booking alerts"/>
+          <Toggle checked={digest} onChange={setDigest} label="Daily summary digest"/>
+        </div>
+      </div>
+
+      <div style={{background:'#fff',borderRadius:14,padding:'4px 14px',border:`1px solid ${T.borderS}`,boxShadow:shadow}}>
+        {rows2.map((r,i)=><div key={r.t} style={{display:'flex',alignItems:'center',gap:12,minHeight:52,padding:'8px 0',borderBottom:i<rows2.length-1?`1px solid ${T.borderS}`:'none',cursor:'pointer'}}>
+          <span style={{width:34,height:34,borderRadius:9,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',background:T.brandSurf,color:T.brand}}><Ico n={r.ic} s={15}/></span>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:T.fg}}>{r.t}</div><div style={{fontSize:11,color:T.fg3,marginTop:1}}>{r.sub}</div></div>
+          <Ico n="chevron-right" s={13} c={T.fg4}/>
+        </div>)}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── APP ROOT ── */
+const INIT_REQ=[
+  {id:'LBZ-48301',patient:'Ramesh Gupta',tests:'HbA1c · Fasting glucose',mode:'Home collection',slot:'7:30 AM',amount:748},
+  {id:'LBZ-48302',patient:'Kavitha N.',tests:'Lipid Profile',mode:'Walk-in',slot:'9:00 AM',amount:549},
+];
+const INIT_ORD=[
+  {id:'LBZ-48291',patient:'Asha Rao, 29F',tests:'Lipid Profile + CBC',slot:'7:20 AM · Home',stage:'processing',assistant:'Arjun',mode:'Home collection'},
+  {id:'LBZ-48285',patient:'Suresh K., 54M',tests:'HbA1c',slot:'8:00 AM · Walk-in',stage:'sampled',mode:'Walk-in'},
+  {id:'LBZ-48279',patient:'Priya M., 33F',tests:'Thyroid profile (TSH)',slot:'9:30 AM · Walk-in',stage:'booked',mode:'Walk-in'},
+];
+const TABS=[
+  {key:'today',icon:'home',label:'Today'},
+  {key:'orders',icon:'package',label:'Orders'},
+  {key:'staff',icon:'user',label:'Staff'},
+  {key:'settings',icon:'sliders',label:'Settings'},
+];
+
+function App(){
+  const getSaved=()=>{try{return JSON.parse(localStorage.getItem('lbz_partner_v2')||'null');}catch{return null;}};
+  const init=getSaved()||{tab:'today',req:INIT_REQ,ord:INIT_ORD};
+  const [tab,setTab]=React.useState(init.tab||'today');
+  const [requests,setRequests]=React.useState(INIT_REQ);
+  const [orders,setOrders]=React.useState(INIT_ORD);
+
+  React.useEffect(()=>{
+    try{localStorage.setItem('lbz_partner_v2',JSON.stringify({tab,req:requests,ord:orders}));}catch{}
+  },[tab,requests,orders]);
+
+  const accept=id=>{
+    const r=requests.find(x=>x.id===id); if(!r) return;
+    setRequests(rs=>rs.filter(x=>x.id!==id));
+    setOrders(os=>[{id:r.id,patient:r.patient,tests:r.tests,slot:r.slot,stage:'booked',mode:r.mode},...os]);
+  };
+  const decline=id=>setRequests(rs=>rs.filter(x=>x.id!==id));
+  const advance=id=>setOrders(os=>os.map(o=>{
+    if(o.id!==id) return o;
+    const nxt=STAGE_FLOW[STAGE_FLOW.indexOf(o.stage)+1];
+    return nxt?{...o,stage:nxt}:o;
+  }));
+
+  const tabs=TABS.map(t=>t.key==='orders'?{...t,badge:requests.length||0}:t);
+  let view;
+  if(tab==='today')    view=<TodayScrn requests={requests} onAccept={accept} onDecline={decline} orders={orders} onAdvance={advance}/>;
+  else if(tab==='orders')   view=<OrdersScrn orders={[...requests.map(r=>({...r,patient:r.patient,tests:r.tests,slot:r.slot,stage:'booked',mode:r.mode})),...orders]} onAdvance={advance}/>;
+  else if(tab==='staff')    view=<StaffScrn/>;
+  else                      view=<SettingsScrn/>;
+
+  return <div style={{height:'100vh',display:'flex',flexDirection:'column',background:T.surfLow,position:'relative'}}>
+    <div style={{flex:1,overflowY:'auto'}}>{view}</div>
+    <TabBar tabs={tabs} active={tab} onChange={setTab}/>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

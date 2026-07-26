@@ -203,9 +203,9 @@ test('GET /health returns ok + connected db', async () => {
 
 - [ ] **Step 5: Wire `npm test` and run**
 
-In `package.json` `scripts`, set:
+In `package.json` `scripts`, set (glob limits discovery to `tests/` so `node --test` does not pick up `models/test.js`, a Mongoose model named `test.js`; the quoted glob is expanded by Node, not the shell, so it works on Windows cmd and bash). Note: a bare directory arg (`node --test tests/`) is NOT supported in Node 22 — use the glob:
 ```json
-"test": "node --test",
+"test": "node --test \"tests/**/*.test.js\"",
 "start": "nodemon app.js",
 "start:prod": "node app.js"
 ```
@@ -1987,3 +1987,2884 @@ Expected: image builds; `npm test` green. (If Docker is unavailable locally, ver
 ## Dependencies / ordering note
 
 Tasks 1→2 must run first (env exports + scheduler stub unblock the app factory). Task 3 (shared) precedes 4–10. Task 4 (SlotCapacity) precedes 5, 7, 10. The Task 5/7 `notifyBookingStatus` stub is replaced by the real service in Task 9 — if a worker executes strictly in order, create the one-line stub when first referenced, then overwrite in Task 9.
+
+---
+
+# Phase 2 — Frontend Alignment Tasks
+
+> **Driver:** the `labzy frotend helper/` design-system kit + the PatientHome/PatientLabDetail/PatientBookings/PatientReports/PartnerToday/PartnerOrders UI kits surface several endpoints, statuses, and data shapes the current backend cannot serve. Phase 2 closes those gaps without breaking Phase 1's layered architecture: every new endpoint goes through routes → controller → service → models, and uses the same `DomainError` envelope.
+
+**Status mapping (the source of truth used by both apps):**
+
+| Frontend stage    | Backend `Booking.status` | Timeline step | Partner action that advances it |
+|-------------------|--------------------------|---------------|---------------------------------|
+| Pending lab confirmation | `PENDING`        | 0             | accept → CONFIRMED              |
+| Booked / Confirmed | `CONFIRMED`             | 0             | mark collected → COLLECTED      |
+| Sample collected   | `COLLECTED`             | 1             | start processing → PROCESSING   |
+| Processing         | `PROCESSING` *(new)*    | 2             | upload report → COMPLETED       |
+| Report ready       | `COMPLETED`             | 3             | —                               |
+| Cancelled by you / by lab | `CANCELLED`      | —             | —                               |
+
+> Phase 2 introduces a new `PROCESSING` state. Existing transitions stay backwards-compatible: `COLLECTED → COMPLETED` becomes `COLLECTED → PROCESSING → COMPLETED`. Old data with status `COLLECTED` is untouched; the new state only appears for bookings that transition forward after Phase 2 ships.
+
+---
+
+## Task 12: Email + password onboarding for customers (defer OTP)
+
+> **Why this is email/password, not phone+OTP:** SMS providers (MSG91/Twilio) charge per send and add an operational dependency. The frontend UI kits show a phone field on the onboarding screen, but the patient app can render that field as **email + password** without re-skinning a single component. When budget is available, swap this task for the previously-drafted phone+OTP design (kept in commit history) — `authService.registerOrLoginByPhone` is a drop-in addition; the email path stays as the partner login. No other Phase-2 task depends on the chosen credential.
+
+**Files:**
+- Modify: `models/user.js` — add `emailVerifiedAt` (preps the verification-email task without forcing it now)
+- Modify: `services/authService.js` (from Phase-1 Task 8) — `register({ name, email, password, phone?, role? })` already exists and creates a user with hashed password + issues tokens. Confirm it returns `{ accessToken, refreshToken, user }`.
+- Modify: `controllers/authController.js` — no changes beyond Phase-1 Task 8.
+- Modify: `routes/authRoutes.js` — confirm `POST /auth/register` accepts `phone` (already in the Phase-1 schema; this lets us collect the phone number for future SMS without sending one).
+- Create: `tests/customerSignup.test.js` — explicit coverage for the customer path.
+
+- [ ] **Step 1: Add the failing customer-signup test**
+
+Create `tests/customerSignup.test.js`:
+```js
+import { test, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { setupTestApp, teardownTestApp } from './helpers/buildApp.js';
+import User from '../models/user.js';
+
+let app;
+before(async () => { app = await setupTestApp(); });
+after(async () => { await teardownTestApp(app); });
+beforeEach(async () => { await User.deleteMany({}); });
+
+test('register then login: customer gets accessToken/refreshToken/user with CUSTOMER role', async () => {
+  const reg = await app.inject({ method:'POST', url:'/api/auth/register',
+    payload:{ name:'Asha Rao', email:'asha@labzy.test', password:'pass1234', phone:'+919999990000' } });
+  assert.equal(reg.statusCode, 201);
+  const body = reg.json();
+  assert.ok(body.accessToken);
+  assert.ok(body.refreshToken);
+  assert.deepEqual(body.user.roles, ['CUSTOMER']);
+
+  const login = await app.inject({ method:'POST', url:'/api/auth/login',
+    payload:{ email:'asha@labzy.test', password:'pass1234' } });
+  assert.equal(login.statusCode, 200);
+  assert.ok(login.json().accessToken);
+});
+
+test('duplicate email returns 409 CONFLICT', async () => {
+  const payload = { name:'A', email:'dup@labzy.test', password:'pass1234' };
+  await app.inject({ method:'POST', url:'/api/auth/register', payload });
+  const dup = await app.inject({ method:'POST', url:'/api/auth/register', payload });
+  assert.equal(dup.statusCode, 409);
+  assert.equal(dup.json().type, 'https://labzy.in/errors/CONFLICT');
+});
+```
+
+- [ ] **Step 2: Verify `services/authService.js` already covers this**
+
+The `register` helper from Phase-1 Task 8 already:
+1. Rejects duplicate emails with `Errors.CONFLICT('Email already in use')`.
+2. Hashes the password (`bcrypt.hash(password, 12)`).
+3. Defaults `roles` to `['CUSTOMER']` unless `role === 'LAB_OWNER'`.
+4. Returns `{ accessToken, refreshToken, user: { id, name, email, roles } }`.
+
+No service change is needed; this task is mostly **acceptance test coverage** for the customer journey and a small schema field for future verification.
+
+- [ ] **Step 3: Add `emailVerifiedAt` to `models/user.js`** (no behavior change yet)
+
+Append to the user schema definition:
+```js
+emailVerifiedAt: { type: Date, default: null },
+```
+Verification emails are deferred until a transactional sender is configured; the column is added now so the column flip is a one-line change later.
+
+- [ ] **Step 4: Tighten the register route schema**
+
+In `routes/authRoutes.js`, the existing schema already accepts `name, email, password, phone, role`. No change needed.
+
+- [ ] **Step 5: Run**
+
+```bash
+node --test tests/customerSignup.test.js
+```
+Expected: PASS — both subtests.
+
+**Checkpoint:** customer and partner use the same `POST /auth/register` + `POST /auth/login` flow; only the role differs. Commit when ready.
+
+### Future swap-in (when SMS budget exists)
+
+Drop in a follow-up task that adds:
+- `models/otpChallenge.js` (TTL'd hashed OTPs with attempt counter),
+- `services/otpService.js` (`requestOtp` / `verifyOtp` with bcrypt-hashed compare),
+- `services/authService.registerOrLoginByPhone({ phone, otp, name })`,
+- `POST /api/auth/otp/request` + `POST /api/auth/otp/verify`,
+- `phoneVerifiedAt` on User.
+
+The phone field already collected on `/auth/register` becomes the seed for that flow.
+
+---
+
+## Task 13: Booking code + `PROCESSING` status + advance endpoints
+
+**Why:** the UI shows `LBZ-48291`-style codes and a four-step timeline (Booked → Sampled → Processing → Ready). The current state machine collapses Sampled/Processing into one. Add a sortable, short, public code on every booking and split `PROCESSING` out of `COLLECTED`.
+
+**Files:**
+- Modify: `models/booking.js` — add `code` (unique, indexed), extend `status` enum with `PROCESSING`
+- Modify: `services/_shared/transitions.js` — add `COLLECTED → PROCESSING` and `PROCESSING → COMPLETED`
+- Create: `services/bookingCodeService.js` — `generateCode()` (e.g. `LBZ-` + base32 of incrementing counter)
+- Modify: `services/bookingService.js` — set `code` on create
+- Modify: `services/partnerService.js` — add `markCollected`, `markProcessing`, `markReady` (the last triggers `linkReport` flow)
+- Modify: `controllers/partnerController.js` + `routes/partnerRoutes.js` — `POST /partner/bookings/:id/mark-collected`, `/mark-processing`, `/mark-ready`
+- Modify: `tests/booking.test.js` — assert booking response contains `code` matching `^LBZ-[A-Z0-9]{6,}$`
+- Create: `tests/bookingAdvance.test.js` — covers full state machine
+
+- [ ] **Step 1: Update `VALID_TRANSITIONS`**
+```js
+export const VALID_TRANSITIONS = {
+  PENDING:    ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED:  ['COLLECTED', 'CANCELLED'],
+  COLLECTED:  ['PROCESSING', 'CANCELLED'],
+  PROCESSING: ['COMPLETED'],
+  COMPLETED:  [],
+  CANCELLED:  [],
+};
+```
+
+- [ ] **Step 2: Implement `services/bookingCodeService.js`**
+```js
+import Booking from '../models/booking.js';
+
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Crockford-ish (no I, O, 0, 1)
+const encode = (n) => {
+  let s = '';
+  while (n > 0) { s = ALPHABET[n % 32] + s; n = Math.floor(n / 32); }
+  return s.padStart(5, ALPHABET[0]);
+};
+
+export const generateCode = async () => {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = `LBZ-${encode(Date.now() % 1e9 + Math.floor(Math.random() * 1024))}`;
+    const exists = await Booking.exists({ code: candidate });
+    if (!exists) return candidate;
+  }
+  throw new Error('Failed to generate unique booking code');
+};
+```
+
+- [ ] **Step 3: Booking model + service updates**
+Add to `models/booking.js`:
+```js
+code: { type: String, unique: true, sparse: true, index: true },
+status: { type: String, enum: ['PENDING', 'CONFIRMED', 'COLLECTED', 'PROCESSING', 'COMPLETED', 'CANCELLED'], default: 'PENDING' },
+```
+In `services/bookingService.js` `createBooking`, before `Booking.create(...)`:
+```js
+const code = await generateCode();
+```
+and pass `code` into the create payload.
+
+- [ ] **Step 4: Partner advance endpoints**
+
+Add to `services/partnerService.js`:
+```js
+import { notifyBookingStatus } from './notificationService.js';
+const advance = async ({ userId, bookingId, toStatus, allowedFrom }) => {
+  const { booking } = await findOwnedBooking(userId, bookingId, `/partner/bookings/${bookingId}`);
+  if (!allowedFrom.includes(booking.status)) {
+    throw Errors.INVALID_BOOKING_TRANSITION(`Cannot move ${booking.status} -> ${toStatus}`);
+  }
+  assertTransition(booking.status, toStatus);
+  booking.status = toStatus;
+  await booking.save();
+  notifyBookingStatus(booking).catch(() => {});
+  return booking;
+};
+export const markCollected  = (args) => advance({ ...args, toStatus: 'COLLECTED',  allowedFrom: ['CONFIRMED'] });
+export const markProcessing = (args) => advance({ ...args, toStatus: 'PROCESSING', allowedFrom: ['COLLECTED'] });
+```
+(reportService.linkReport already sets COMPLETED — Task 7 — so "mark-ready" is the existing `POST /partner/bookings/:id/report`.)
+
+Add to `controllers/partnerController.js` + `routes/partnerRoutes.js`:
+```js
+fastify.post('/partner/bookings/:id/mark-collected', { ...ownerAuth }, markCollected);
+fastify.post('/partner/bookings/:id/mark-processing', { ...ownerAuth }, markProcessing);
+```
+
+- [ ] **Step 5: Test the new transitions**
+
+Create `tests/bookingAdvance.test.js` that walks PENDING → CONFIRMED → COLLECTED → PROCESSING → COMPLETED via owner endpoints and asserts the booking's `code` matches `^LBZ-[A-Z0-9]{6,}$`.
+
+Run: `npm test`
+Expected: green.
+
+**Checkpoint:** booking timeline matches the UI; every booking has a code. Commit when ready.
+
+---
+
+## Task 14: Booking reschedule + structured timeline payload
+
+**Why:** the patient bookings UI exposes Reschedule and renders a step timeline whose current index is computed server-side. We give it a stable shape.
+
+**Files:**
+- Modify: `services/bookingService.js` — `rescheduleBooking({ user, bookingId, scheduledDate, slot })` (release old slot → reserve new → update booking → notify)
+- Modify: `controllers/bookingController.js` + `routes/bookingRoutes.js` — `POST /bookings/:id/reschedule`
+- Modify: `services/bookingService.js` `getBookingForUser` and `listBookings` — derive a `timeline` array `[{ step:'Booked', state:'done'|'active'|'pending' }, ...]` from `booking.status`
+- Create: `tests/reschedule.test.js`
+
+- [ ] **Step 1: Service**
+```js
+export const rescheduleBooking = async ({ user, bookingId, scheduledDate, slot }) => {
+  const booking = await Booking.findById(bookingId);
+  if (!booking || booking.user.toString() !== user._id.toString()) throw Errors.BOOKING_NOT_FOUND(`/bookings/${bookingId}`);
+  if (!['PENDING', 'CONFIRMED'].includes(booking.status)) throw Errors.INVALID_BOOKING_TRANSITION(`Cannot reschedule a ${booking.status} booking`);
+  const lab = await Lab.findById(booking.lab);
+  const maxPerSlot = lab?.slotMatrix?.maxBookingsPerSlot || 5;
+  await reserveSlot({ labId: booking.lab, scheduledDate, slotStart: slot.start, maxPerSlot });
+  await releaseSlot({ labId: booking.lab, scheduledDate: booking.scheduledDate, slotStart: booking.slot.start });
+  booking.scheduledDate = new Date(scheduledDate);
+  booking.slot = { start: slot.start, end: addMinutes(slot.start, lab.slotMatrix?.duration || 30) };
+  booking.slotHoldExpiry = new Date(Date.now() + 15 * 60 * 1000);
+  await booking.save();
+  notifyBookingStatus(booking).catch(() => {});
+  return booking;
+};
+```
+
+- [ ] **Step 2: Timeline shape**
+
+Add to `services/_shared/transitions.js`:
+```js
+export const TIMELINE_STEPS = ['Booked', 'Sampled', 'Processing', 'Ready'];
+const STATUS_TO_TIMELINE_INDEX = { PENDING: 0, CONFIRMED: 0, COLLECTED: 1, PROCESSING: 2, COMPLETED: 3, CANCELLED: -1 };
+export const buildTimeline = (status) => {
+  const idx = STATUS_TO_TIMELINE_INDEX[status] ?? -1;
+  return TIMELINE_STEPS.map((label, i) => ({
+    label,
+    state: i < idx ? 'done' : i === idx ? 'active' : 'pending',
+  }));
+};
+```
+In `bookingService.getBookingForUser` and `listBookings`, attach `timeline: buildTimeline(b.status)` to each returned booking (serialize via plain object spread).
+
+- [ ] **Step 3: Route + tests**
+`fastify.post('/bookings/:id/reschedule', ...)` accepts `{ scheduledDate, slot:{start} }`. Test happy path (PENDING → reschedule → new slot reserved, old released) and the 409 when the new slot is full.
+
+**Checkpoint:** UI can render the timeline directly from `booking.timeline` and reschedule works. Commit when ready.
+
+---
+
+## Task 15: Structured report results (parameter / value / range)
+
+**Why:** PatientReports renders a table of `parameter / value / reference range` with high/low flags. Today, `Report` only stores a PDF URI. Add structured parameters that the lab partner enters at upload time and the customer reads back.
+
+**Files:**
+- Modify: `models/report.js` — add `parameters: [{ name, value, unit, refLow, refHigh, flag }]`, `remindRetestAt`
+- Modify: `services/reportService.js` — accept `parameters` when linking, expose them on read
+- Modify: `controllers/partnerController.js` linkReport input schema (accept optional `parameters`)
+- Modify: `controllers/bookingController.js.getBookingReport` — return `{ signedUrl, issuedAt, parameters }`
+- Create: `services/reportReminderService.js` — `setRetestReminder({ user, reportId, intervalDays })`
+- Add: `POST /reports/:id/retest-reminder`
+- Tests: `tests/report.test.js`
+
+- [ ] **Step 1: Schema additions**
+```js
+const parameterSchema = new mongoose.Schema({
+  name:    { type: String, required: true },
+  value:   { type: String, required: true },
+  unit:    { type: String },
+  refLow:  { type: Number },
+  refHigh: { type: Number },
+  flag:    { type: String, enum: ['LOW', 'NORMAL', 'HIGH', null], default: null },
+}, { _id: false });
+
+reportSchema.add({
+  parameters:     [parameterSchema],
+  remindRetestAt: { type: Date, default: null },
+});
+```
+
+- [ ] **Step 2: Service**
+
+Extend `reportService.linkReport` to accept `parameters` and persist them. `getReportForUser` already populates the report — add `parameters` to the returned shape.
+
+Add:
+```js
+export const setRetestReminder = async ({ userId, reportId, intervalDays }) => {
+  const report = await Report.findById(reportId).populate('booking');
+  if (!report || report.booking.user.toString() !== userId.toString()) throw Errors.REPORT_ACCESS_DENIED();
+  report.remindRetestAt = new Date(Date.now() + intervalDays * 24 * 60 * 60 * 1000);
+  await report.save();
+  return { remindRetestAt: report.remindRetestAt };
+};
+```
+
+- [ ] **Step 3: Route**
+```js
+fastify.post('/reports/:id/retest-reminder', { preHandler:[verifyJWT],
+  schema: { body: { type:'object', required:['intervalDays'],
+    properties: { intervalDays: { type:'integer', minimum:1, maximum:365 } }, additionalProperties:false } } },
+  setRetestReminder);
+```
+
+- [ ] **Step 4: Schedule the reminder ping**
+
+Add a new job in `scheduler/jobs/retestReminderJob.js`:
+```js
+import Report from '../../models/report.js';
+import { notify } from '../../services/notificationService.js';
+
+export const runRetestReminders = async ({ now = new Date() } = {}) => {
+  const due = await Report.find({ remindRetestAt: { $lte: now, $ne: null } }).populate('booking').limit(100);
+  for (const r of due) {
+    await notify({ userId: r.booking.user, event: 'RETEST_DUE',
+      title: 'Time for your re-test', body: `It's time to repeat: ${r.parameters?.[0]?.name || 'your test'}.`,
+      data: { reportId: r._id.toString() } });
+    r.remindRetestAt = null;
+    await r.save();
+  }
+};
+```
+Add a 1-hour interval in `scheduler/index.js`.
+
+**Checkpoint:** report list can render the table inline and the customer can set the re-test reminder toggle. Commit when ready.
+
+---
+
+## Task 16: Persisted notifications (list + mark-read) + WebSocket auth
+
+**Why:** the bell icon shows an unread count and tapping it opens a list. We need to persist notifications, not just push them.
+
+**Files:**
+- Create: `models/notification.js` — `{ user, event, title, body, data, readAt, createdAt }`
+- Modify: `services/notificationService.js` — `notify()` writes a `Notification` doc before broadcasting
+- Create: `services/notificationsListService.js` — `list`, `markRead`, `unreadCount`
+- Add routes:
+  - `GET  /api/notifications` (paginated)
+  - `POST /api/notifications/:id/read`
+  - `POST /api/notifications/read-all`
+  - `GET  /api/notifications/unread-count`
+- Add: `routes/wsRoutes.js` — `GET /ws` upgraded route, JWT in `?token=`; calls `registerSocket`
+- Tests: `tests/notifications.test.js`
+
+- [ ] **Step 1: Model**
+```js
+import mongoose from 'mongoose';
+
+const notificationSchema = new mongoose.Schema({
+  user:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  event:  { type: String, required: true },
+  title:  { type: String, required: true },
+  body:   { type: String },
+  data:   { type: mongoose.Schema.Types.Mixed },
+  readAt: { type: Date, default: null },
+}, { timestamps: true });
+notificationSchema.index({ user: 1, readAt: 1, createdAt: -1 });
+export default mongoose.model('Notification', notificationSchema);
+```
+
+- [ ] **Step 2: Service additions**
+```js
+import Notification from '../models/notification.js';
+// inside notify() — persist first, then broadcast/push:
+const doc = await Notification.create({ user: userId, event, title, body, data });
+broadcast(userId, { id: doc._id.toString(), ...payload });
+await sendPush(userId, title, body, data);
+```
+
+- [ ] **Step 3: List service**
+```js
+export const listNotifications = async ({ userId, page = 1, limit = 20 }) => {
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const [items, total, unread] = await Promise.all([
+    Notification.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
+    Notification.countDocuments({ user: userId }),
+    Notification.countDocuments({ user: userId, readAt: null }),
+  ]);
+  return { items, total, unread, page: parseInt(page), limit: parseInt(limit) };
+};
+export const markRead = async ({ userId, id }) => Notification.findOneAndUpdate({ _id: id, user: userId }, { readAt: new Date() }, { new: true });
+export const markAllRead = async ({ userId }) => Notification.updateMany({ user: userId, readAt: null }, { readAt: new Date() });
+export const unreadCount = async ({ userId }) => ({ unread: await Notification.countDocuments({ user: userId, readAt: null }) });
+```
+
+- [ ] **Step 4: WebSocket route**
+```js
+// routes/wsRoutes.js
+import jwt from 'jsonwebtoken';
+import User from '../models/user.js';
+import { JWT_SECRET } from '../config/env.js';
+import { registerSocket, unregisterSocket } from '../services/notificationService.js';
+
+export const wsRoutes = async (fastify) => {
+  fastify.get('/ws', { websocket: true }, (connection, req) => {
+    const token = new URL(req.url, 'http://x').searchParams.get('token');
+    let userId;
+    try { userId = jwt.verify(token, JWT_SECRET).id; } catch { connection.socket.close(1008, 'unauthorized'); return; }
+    registerSocket(userId, connection.socket);
+    connection.socket.on('close', () => unregisterSocket(userId, connection.socket));
+  });
+};
+```
+Register in `routes/index.js` (no `/api` prefix).
+
+**Checkpoint:** bell badge can pull `unreadCount`; tapping bell hits `/notifications`; backend pushes live updates via WS. Commit when ready.
+
+---
+
+## Task 17: Health packages (test bundles)
+
+**Why:** Home shows "Complete Health Check 87 tests ₹999", "Diabetes Panel 12 tests ₹649". These are bundles, not single tests.
+
+**Files:**
+- Create: `models/healthPackage.js` — `{ lab, name, slug, description, category, icon, tests:[Test], price, mrp, isActive }`
+- Create: `services/healthPackageService.js`
+- Add routes:
+  - `GET /api/packages` — list, filter by `category`, `lab`, search
+  - `GET /api/packages/:slug` — detail
+- Extend `Booking` to allow `package` reference; booking creation accepts `packageId` OR `testIds` (expand to package's tests)
+
+- [ ] **Step 1: Model**
+```js
+import mongoose from 'mongoose';
+const pkgSchema = new mongoose.Schema({
+  lab:         { type: mongoose.Schema.Types.ObjectId, ref: 'Lab' },
+  name:        { type: String, required: true },
+  slug:        { type: String, required: true, unique: true, index: true },
+  description: { type: String },
+  category:    { type: String, default: 'General' },
+  icon:        { type: String, default: 'package' },
+  tests:       [{ type: mongoose.Schema.Types.ObjectId, ref: 'Test' }],
+  price:       { type: Number, required: true },
+  mrp:         { type: Number },
+  isActive:    { type: Boolean, default: true },
+}, { timestamps: true });
+pkgSchema.index({ category: 1, isActive: 1 });
+export default mongoose.model('HealthPackage', pkgSchema);
+```
+
+- [ ] **Step 2: Service**
+```js
+export const listPackages = async (q) => {
+  const filter = { isActive: true };
+  if (q.category) filter.category = q.category;
+  if (q.lab)      filter.lab = q.lab;
+  if (q.q)        filter.name = { $regex: new RegExp(q.q, 'i') };
+  const page = parseInt(q.page) || 1;
+  const limit = Math.min(parseInt(q.limit) || 20, 100);
+  const skip = (page - 1) * limit;
+  const [packages, total] = await Promise.all([
+    HealthPackage.find(filter).populate('tests', 'name price').sort({ createdAt: -1 }).skip(skip).limit(limit),
+    HealthPackage.countDocuments(filter),
+  ]);
+  return { packages, total, page, limit };
+};
+export const getPackage = async (slug) => {
+  const pkg = await HealthPackage.findOne({ slug, isActive: true }).populate('tests', 'name price description');
+  if (!pkg) throw Errors.NOT_FOUND('Package');
+  return pkg;
+};
+```
+
+- [ ] **Step 3: Booking creation accepts packages**
+
+In `bookingService.createBooking`, when `packageId` is provided:
+```js
+const pkg = await HealthPackage.findById(packageId).populate('tests');
+if (!pkg) throw Errors.NOT_FOUND('Package');
+testIds = pkg.tests.map((t) => t._id.toString());
+totalAmount = pkg.price; // package price overrides per-test sum
+```
+
+Add `package: { type: mongoose.Schema.Types.ObjectId, ref: 'HealthPackage' }` to Booking model and `packageId` to the route schema.
+
+**Checkpoint:** Home can render package cards; tapping a package adds them all to cart at the package price. Commit when ready.
+
+---
+
+## Task 18: Family members / dependents
+
+**Why:** Profile shows "Family members: Asha, Ravi +1" and bookings can be made for a dependent.
+
+**Files:**
+- Modify: `models/user.js` — add `dependents: [{ name, relation, gender, birthDate }]` (sub-doc)
+- Add routes:
+  - `GET    /api/me/dependents`
+  - `POST   /api/me/dependents`
+  - `PUT    /api/me/dependents/:id`
+  - `DELETE /api/me/dependents/:id`
+- Modify: `Booking` model — add `patient: { name, relation, gender, birthDate }` snapshot; default to user when no dependent passed
+- Update `bookingService.createBooking` to accept `dependentId` and snapshot from `user.dependents`
+
+(Implementation mirrors `addresses` plumbing in profileService — keep the diffs DRY.)
+
+---
+
+## Task 19: Payment intent (Razorpay-pluggable) + booking → payment → confirmed
+
+**Why:** the UI displays prices and "Book ₹999" CTAs; bookings should not jump to CONFIRMED until paid. We add a payment-intent layer.
+
+**Files:**
+- Modify: `models/transaction.js` (exists) — confirm shape: `{ user, booking, amount, currency, provider, providerOrderId, providerPaymentId, status }`
+- Create: `services/paymentService.js` — `createIntent(booking)` → returns `{ providerOrderId, amount, currency, key }` (uses Razorpay SDK if `RAZORPAY_KEY_ID` set; otherwise dev stub returns `mock_*` IDs)
+- Create: `services/webhookService.js` — `handleRazorpayWebhook(payload, signature)` verifies HMAC and marks transaction + booking CONFIRMED
+- Add routes:
+  - `POST /api/bookings/:id/payment-intent`
+  - `POST /api/payments/webhook` (HMAC verified, no auth)
+- Modify: `bookingService.createBooking` — leave status `PENDING`, accept `paymentMethod: 'PAY_AT_LAB' | 'ONLINE'`. On `PAY_AT_LAB` skip payment intent (still requires partner accept). On `ONLINE`, customer must hit payment-intent next.
+
+> Critical: the `WEBHOOK_SIGNATURE_INVALID` error type is already defined in `common/errors.js` — use it.
+
+---
+
+## Task 20: Lab reviews & ratings
+
+**Why:** UI shows `★ 4.8 (1.2k reviews)` per lab. The lab model already carries `rating` + `totalRatings` but there is no review collection or write path.
+
+**Files:**
+- Create: `models/review.js` — `{ user, lab, booking (optional), rating(1-5), comment, createdAt }`
+- Create: `services/reviewService.js`
+- Add routes:
+  - `POST /api/labs/:id/reviews` (CUSTOMER auth; one review per booking)
+  - `GET  /api/labs/:id/reviews` (paginated)
+- Recompute `Lab.rating` + `totalRatings` on every create.
+
+```js
+// snippet
+export const createReview = async ({ user, labId, rating, comment, bookingId }) => {
+  if (bookingId && await Review.exists({ user: user._id, booking: bookingId })) throw Errors.CONFLICT('Already reviewed');
+  const review = await Review.create({ user: user._id, lab: labId, booking: bookingId, rating, comment });
+  const agg = await Review.aggregate([
+    { $match: { lab: review.lab } },
+    { $group: { _id: '$lab', avg: { $avg: '$rating' }, count: { $sum: 1 } } },
+  ]);
+  await Lab.findByIdAndUpdate(labId, { rating: agg[0]?.avg || 0, totalRatings: agg[0]?.count || 0 });
+  return review;
+};
+```
+
+---
+
+## Task 21: Partner Today stats endpoint + "incoming requests" derivation
+
+**Why:** PartnerToday shows `{ totalToday, pending, inProgress, done }` and a list of "new requests". Today these would each be a separate query from the frontend.
+
+**Files:**
+- Modify: `services/partnerService.js` — `getTodaySummary(userId)`
+- Add route: `GET /api/partner/today`
+
+```js
+export const getTodaySummary = async (userId) => {
+  const lab = await getOwnedLab(userId);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const match = { lab: lab._id, scheduledDate: { $gte: today, $lt: tomorrow } };
+  const [total, pending, inProgress, done, requests] = await Promise.all([
+    Booking.countDocuments(match),
+    Booking.countDocuments({ ...match, status: 'PENDING' }),
+    Booking.countDocuments({ ...match, status: { $in: ['CONFIRMED', 'COLLECTED', 'PROCESSING'] } }),
+    Booking.countDocuments({ ...match, status: 'COMPLETED' }),
+    Booking.find({ ...match, status: 'PENDING' }).populate('user', 'name phone').populate('tests', 'name price').sort({ createdAt: 1 }).limit(10),
+  ]);
+  return { lab: { id: lab._id, name: lab.name }, stats: { total, pending, inProgress, done }, requests };
+};
+```
+
+---
+
+## Task 22: Static reference data (categories + promo banners)
+
+**Why:** Home renders ten fixed category tiles and a three-banner carousel. To let the partner team change these without a release, expose them as a tiny CMS endpoint backed by a config collection.
+
+**Files:**
+- Create: `models/appContent.js` — `{ key: 'home_categories' | 'home_banners' | 'lab_amenities', payload: Mixed, updatedAt }`
+- Add route: `GET /api/content/:key` (public, cached 5 min via `Cache-Control`)
+- Seed defaults (categories from PatientHome.jsx, banners from index.html) in a Phase-2 migration script.
+
+---
+
+## Phase 2 Self-Review
+
+- [ ] Phone-OTP path issues tokens with the same shape as email login.
+- [ ] Every booking response (list + detail) includes `code` and `timeline`.
+- [ ] `Booking.status` enum includes `PROCESSING`; the state machine is the only place that validates transitions.
+- [ ] `GET /reports/:id` returns `parameters` and `signedUrl`.
+- [ ] Notifications persist in DB and stream over `/ws`.
+- [ ] All Phase-2 routes thread through routes → controller → service → models — no direct Mongo in controllers.
+
+---
+
+# Phase 3 — PRD Compliance
+
+> **Driver:** `Labzy_Detailed_PRD.md` (v2.0). Phase 1 made the architecture sustainable and Phase 2 covered the UI-kit surface. Phase 3 closes the remaining PRD functional requirements (Customer §§6.1–6.12, Partner §§7.1–7.9, cross-cutting §§8.1–8.4). Same architectural rules apply: routes → controllers → services → models; `DomainError` envelope everywhere; no direct DB access in controllers.
+
+**PRD → Task map (jump table):**
+
+> **Auth policy note:** The PRD specifies mobile + OTP for both customers and partner staff. The user has explicitly directed that **email + password is the only auth method** for every role (cost: SMS providers aren't free). Tasks 23 and 40 are therefore implemented as email-only flows that still capture the PRD's other onboarding requirements (consent, DOB/gender, age gate, staff roles, etc.). When SMS budget is available, the deferred phone+OTP work is documented in the "Future swap-in" section at the end of Task 12 (Phase 2).
+
+| PRD §  | Task | Title |
+|--------|------|-------|
+| 6.1    | 23   | Email+password onboarding with TOS/Privacy/Health-records consent + DOB/gender + < 18 age gate |
+| 6.1    | 24   | Session device cap (3 devices) + account-deletion grace |
+| 6.2    | 25   | Lab discovery — relevance sort + synonyms + recently viewed + "notify when lab joins" |
+| 6.3    | 26   | Lab profile depth — photos, rating distribution, plain-language descriptions |
+| 6.4, 6.6 | 27 | Booking state machine v2 — `ASSISTANT_ASSIGNED`, `ON_THE_WAY`, `ARRIVED`, `NO_SHOW`, `RESCHEDULED` + status-event log |
+| 6.4    | 28   | Booking policy — 10-min hold, reschedule cutoff & count, cancellation policy, lab-response auto-cancel |
+| 6.5    | 29   | Subscription v2 — approve-each-time, slot intelligence, skip/pause-until, occurrence history, payment-failure auto-pause |
+| 6.6    | 30   | Sample-collection OTP + masked calling + visit notes |
+| 6.6    | 31   | Sample issue → free re-collection flow |
+| 6.7, 7.6 | 32 | Reports v2 — per-test partials, replace-with-reason, TAT board |
+| 6.8    | 33   | Payments v2 — invoice PDFs, payment history, refund tracker, partial refund, double-pay reversal |
+| 6.8    | 34   | Promo codes / offers |
+| 6.10   | 35   | Notification preferences + quiet hours + SMS fallback |
+| 6.11   | 36   | Reviews v2 — sub-ratings, lab reply, moderation queue, abuse report |
+| 6.12   | 37   | Help & support tickets |
+| 7.1    | 38   | Lab documents + verification gate + vacation mode + multi-branch |
+| 7.2    | 39   | Master test directory + test publish states + slot capacity per mode + blackout dates |
+| 7.4    | 40   | Staff roles — Lab Manager + Lab Assistant login + assistant day view + metrics |
+| 7.5    | 41   | Lab-scoped customer history + staff notes |
+| 7.7    | 45   | Partner notifications v2 — assistant 60-min visit reminder + owner daily digest |
+| 7.8    | 42   | Analytics v2 — acceptance / no-show / TAT compliance / peak heatmap / quality panel |
+| 7.9    | 43   | Earnings, settlements, disputes |
+| 6.9, 8.1, 8.3 | 44 | Data export, consent center, i18n string catalog |
+
+---
+
+## Task 23: Email+password onboarding with PRD-mandated consent + DOB + age gate (§6.1)
+
+**Auth method note:** PRD §6.1 FR-1 specifies mobile + OTP, but user direction overrides — **email + password is the only auth path** for v1 (SMS providers aren't free). The other §6.1 onboarding requirements (consent gates, DOB/gender, < 18 family-member-only rule) are independent of auth method and are implemented in full here.
+
+**Files:**
+- Create: `models/consentRecord.js`
+- Modify: `services/authService.js` — extend `register()` to enforce consent + DOB + age gate; add `recordConsents()`
+- Modify: `controllers/authController.js` — add `consents` handler
+- Modify: `routes/authRoutes.js` — extend `/auth/register` body schema; add `POST /auth/consents`
+- Modify: `models/user.js` — `birthDate` (exists), `gender` (exists); no new fields
+- Create: `tests/customerSignup.test.js`
+
+- [ ] **Step 1: `models/consentRecord.js`**
+
+```js
+import mongoose from 'mongoose';
+
+const consentRecordSchema = new mongoose.Schema({
+  user:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  kind:    { type: String, enum: ['TOS', 'PRIVACY', 'HEALTH_RECORDS', 'MARKETING'], required: true },
+  version: { type: String, required: true },
+  given:   { type: Boolean, required: true },
+  ip:      { type: String },
+  ua:      { type: String },
+}, { timestamps: true });
+
+consentRecordSchema.index({ user: 1, kind: 1, createdAt: -1 });
+
+export default mongoose.model('ConsentRecord', consentRecordSchema);
+```
+
+- [ ] **Step 2: Extend `services/authService.js`**
+
+Replace the existing `register()` with:
+
+```js
+import ConsentRecord from '../models/consentRecord.js';
+
+const REQUIRED_CONSENTS = ['TOS', 'PRIVACY', 'HEALTH_RECORDS'];
+const MIN_AGE_YEARS = 18;
+
+const ageYearsFrom = (birthDate) => {
+  if (!birthDate) return null;
+  const ageMs = Date.now() - new Date(birthDate).getTime();
+  return ageMs / (365.25 * 24 * 3600 * 1000);
+};
+
+export const register = async ({ name, email, password, phone, role, gender, birthDate, consents, ip, ua }) => {
+  if (await User.findOne({ email })) throw Errors.CONFLICT('Email already in use');
+
+  // PRD §6.1 FR-2: TOS + Privacy + Health-records mandatory at signup (customers only).
+  const isCustomer = role !== 'LAB_OWNER';
+  if (isCustomer) {
+    const accepted = new Set((consents || []).filter((c) => c.given).map((c) => c.kind));
+    for (const k of REQUIRED_CONSENTS) {
+      if (!accepted.has(k)) throw Errors.VALIDATION_ERROR(`Missing required consent: ${k}`);
+    }
+  }
+
+  // PRD §6.1 edge: minors must be family-member profiles, not standalone accounts.
+  if (isCustomer && birthDate) {
+    const age = ageYearsFrom(birthDate);
+    if (age !== null && age < MIN_AGE_YEARS) {
+      throw Errors.VALIDATION_ERROR('Users under 18 must be added as a family member under an adult account');
+    }
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const roles = role === 'LAB_OWNER' ? ['LAB_OWNER'] : ['CUSTOMER'];
+  const user = await User.create({
+    name,
+    email,
+    passwordHash,
+    phone,
+    roles,
+    gender,
+    birthDate: birthDate ? new Date(birthDate) : undefined,
+  });
+
+  if (isCustomer && Array.isArray(consents)) {
+    await ConsentRecord.insertMany(consents.map((c) => ({
+      user: user._id, kind: c.kind, version: c.version || '1.0', given: !!c.given, ip, ua,
+    })));
+  }
+
+  const tokens = await issueTokens(user);
+  return { ...tokens, user: publicUser(user) };
+};
+
+export const recordConsents = async ({ userId, consents, ip, ua }) => {
+  const docs = await ConsentRecord.insertMany((consents || []).map((c) => ({
+    user: userId, kind: c.kind, version: c.version || '1.0', given: !!c.given, ip, ua,
+  })));
+  return { recorded: docs.length };
+};
+```
+
+- [ ] **Step 3: Controller**
+
+```js
+// controllers/authController.js — add:
+export const consents = asyncHandler(async (req, reply) =>
+  reply.code(200).send(await authService.recordConsents({
+    userId: req.user._id,
+    consents: req.body.consents,
+    ip: req.ip,
+    ua: req.headers['user-agent'],
+  })));
+```
+
+Pass `ip` and `ua` into `register()` from the controller as well:
+
+```js
+export const register = asyncHandler(async (req, reply) =>
+  reply.code(201).send(await authService.register({
+    ...req.body,
+    ip: req.ip,
+    ua: req.headers['user-agent'],
+  })));
+```
+
+- [ ] **Step 4: Routes**
+
+```js
+// routes/authRoutes.js — replace the existing /auth/register schema with:
+fastify.post('/auth/register', {
+  schema: {
+    body: {
+      type: 'object',
+      required: ['name', 'email', 'password'],
+      properties: {
+        name:      { type: 'string', minLength: 2 },
+        email:     { type: 'string', format: 'email' },
+        password:  { type: 'string', minLength: 6 },
+        phone:     { type: 'string' },
+        role:      { type: 'string', enum: ['CUSTOMER', 'LAB_OWNER'] },
+        gender:    { type: 'string', enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
+        birthDate: { type: 'string', format: 'date' },
+        consents: { type: 'array', items: { type: 'object',
+          required: ['kind', 'given'],
+          properties: {
+            kind:    { type: 'string', enum: ['TOS', 'PRIVACY', 'HEALTH_RECORDS', 'MARKETING'] },
+            given:   { type: 'boolean' },
+            version: { type: 'string' },
+          }, additionalProperties: false } },
+      },
+      additionalProperties: false,
+    },
+  },
+}, register);
+
+fastify.post('/auth/consents', {
+  preHandler: [verifyJWT],
+  schema: {
+    body: { type: 'object', required: ['consents'],
+      properties: { consents: { type: 'array' } },
+      additionalProperties: false } },
+}, consents);
+```
+
+- [ ] **Step 5: Test (`tests/customerSignup.test.js`)**
+
+```js
+import { test, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { setupTestApp, teardownTestApp } from './helpers/buildApp.js';
+import User from '../models/user.js';
+import ConsentRecord from '../models/consentRecord.js';
+
+let app;
+before(async () => { app = await setupTestApp(); });
+after(async () => { await teardownTestApp(app); });
+beforeEach(async () => { await Promise.all([User.deleteMany({}), ConsentRecord.deleteMany({})]); });
+
+const fullConsent = [
+  { kind: 'TOS',            given: true },
+  { kind: 'PRIVACY',        given: true },
+  { kind: 'HEALTH_RECORDS', given: true },
+];
+
+test('customer signup requires TOS+Privacy+HealthRecords consent', async () => {
+  const partial = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'Asha', email: 'a@x.com', password: 'pass1234',
+      birthDate: '1990-01-01', consents: [{ kind: 'TOS', given: true }] },
+  });
+  assert.equal(partial.statusCode, 400);
+
+  const ok = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'Asha', email: 'a@x.com', password: 'pass1234',
+      birthDate: '1990-01-01', consents: fullConsent },
+  });
+  assert.equal(ok.statusCode, 201);
+  const body = ok.json();
+  assert.ok(body.accessToken);
+  assert.deepEqual(body.user.roles, ['CUSTOMER']);
+  assert.equal((await ConsentRecord.countDocuments()), 3);
+});
+
+test('customer signup rejects users under 18', async () => {
+  const minor = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'Minor', email: 'm@x.com', password: 'pass1234',
+      birthDate: '2020-01-01', consents: fullConsent },
+  });
+  assert.equal(minor.statusCode, 400);
+  assert.match(minor.json().detail, /under 18/);
+});
+
+test('LAB_OWNER signup does not require consents', async () => {
+  const res = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'Owner', email: 'o@x.com', password: 'pass1234', role: 'LAB_OWNER' },
+  });
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(res.json().user.roles, ['LAB_OWNER']);
+});
+
+test('POST /auth/consents persists additional consents post-signup', async () => {
+  const reg = await app.inject({ method: 'POST', url: '/api/auth/register',
+    payload: { name: 'A', email: 'b@x.com', password: 'pass1234',
+      birthDate: '1990-01-01', consents: fullConsent } });
+  const token = reg.json().accessToken;
+  const marketing = await app.inject({ method: 'POST', url: '/api/auth/consents',
+    headers: { authorization: `Bearer ${token}` },
+    payload: { consents: [{ kind: 'MARKETING', given: true }] } });
+  assert.equal(marketing.statusCode, 200);
+  assert.equal(marketing.json().recorded, 1);
+});
+```
+
+Run: `node --test tests/customerSignup.test.js` → PASS.
+
+**Checkpoint:** customer signup gates on TOS/Privacy/Health-records, captures DOB, blocks minors, and writes an audit trail. Partner signup still works without consent. Commit when ready.
+
+---
+
+## Task 24: Session device cap + account-deletion grace (§6.1 FR-6, FR-7)
+
+**Why (PRD):** "A user can be logged in on a maximum of 3 devices simultaneously; logging into a 4th logs out the oldest." Account deletion: "30-day grace period, irreversible after."
+
+**Files:**
+- Create: `models/session.js` — per-device refresh-token record
+- Modify: `services/authService.js` — replace single `user.refreshToken` field with `Session`
+- Modify: `services/profileService.js` — `requestAccountDeletion`, `cancelDeletion`
+- Add routes: `DELETE /api/me`, `POST /api/me/restore`
+- Scheduler: `scheduler/jobs/accountDeletionJob.js` runs daily, purges users whose `deletionScheduledAt < now`
+- Tests: `tests/sessionCap.test.js`, `tests/accountDeletion.test.js`
+
+- [ ] **Step 1: `models/session.js`**
+
+```js
+import mongoose from 'mongoose';
+
+const sessionSchema = new mongoose.Schema({
+  user:             { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  refreshTokenHash: { type: String, required: true },
+  deviceId:         { type: String },
+  deviceLabel:      { type: String },
+  ua:               { type: String },
+  ip:               { type: String },
+  lastUsedAt:       { type: Date, default: Date.now },
+}, { timestamps: true });
+
+sessionSchema.index({ user: 1, lastUsedAt: -1 });
+
+export default mongoose.model('Session', sessionSchema);
+```
+
+- [ ] **Step 2: Update `services/authService.js`**
+
+Replace the existing `issueTokens` with one that creates a `Session` row and enforces the 3-device cap:
+
+```js
+import Session from '../models/session.js';
+
+const MAX_SESSIONS = 3;
+
+const issueTokens = async (user, { deviceId, deviceLabel, ua, ip } = {}) => {
+  const accessToken = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
+  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+
+  // If a session with the same deviceId exists, replace it (re-login on same device).
+  if (deviceId) await Session.deleteMany({ user: user._id, deviceId });
+
+  await Session.create({ user: user._id, refreshTokenHash, deviceId, deviceLabel, ua, ip });
+
+  // Cap at 3 — evict oldest if more.
+  const sessions = await Session.find({ user: user._id }).sort({ lastUsedAt: -1 });
+  if (sessions.length > MAX_SESSIONS) {
+    const evict = sessions.slice(MAX_SESSIONS).map((s) => s._id);
+    await Session.deleteMany({ _id: { $in: evict } });
+  }
+  return { accessToken, refreshToken };
+};
+```
+
+Update `refresh()` to match a candidate session via `bcrypt.compare`:
+
+```js
+export const refresh = async ({ refreshToken, deviceId }) => {
+  if (!refreshToken) throw Errors.UNAUTHORIZED();
+  let decoded;
+  try { decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET); } catch { throw Errors.UNAUTHORIZED(); }
+  const sessions = await Session.find({ user: decoded.id });
+  let matched = null;
+  for (const s of sessions) {
+    if (await bcrypt.compare(refreshToken, s.refreshTokenHash)) { matched = s; break; }
+  }
+  if (!matched) throw Errors.UNAUTHORIZED();
+  await Session.deleteOne({ _id: matched._id });
+
+  const user = await User.findById(decoded.id);
+  if (!user) throw Errors.UNAUTHORIZED();
+  return issueTokens(user, { deviceId, ua: matched.ua, ip: matched.ip });
+};
+
+export const logout = async (user, refreshToken) => {
+  if (refreshToken) {
+    const sessions = await Session.find({ user: user._id });
+    for (const s of sessions) {
+      if (await bcrypt.compare(refreshToken, s.refreshTokenHash)) { await Session.deleteOne({ _id: s._id }); break; }
+    }
+  } else {
+    await Session.deleteMany({ user: user._id });
+  }
+  return { message: 'Logged out successfully' };
+};
+```
+
+- [ ] **Step 3: Account deletion grace period — `models/user.js`**
+
+Add:
+```js
+deletionScheduledAt: { type: Date, default: null, index: true },
+```
+
+`services/profileService.js`:
+```js
+import { notify } from './notificationService.js';
+
+const GRACE_DAYS = 30;
+
+export const requestAccountDeletion = async ({ userId }) => {
+  const user = await User.findById(userId);
+  if (!user) throw Errors.NOT_FOUND('User');
+  user.deletionScheduledAt = new Date(Date.now() + GRACE_DAYS * 24 * 3600 * 1000);
+  await user.save();
+  await Session.deleteMany({ user: userId });
+  await notify({ userId, event: 'ACCOUNT_DELETION_REQUESTED',
+    title: 'Account deletion scheduled',
+    body: `Your account will be deleted on ${user.deletionScheduledAt.toDateString()}. You can cancel until then.`,
+  });
+  return { deletionScheduledAt: user.deletionScheduledAt };
+};
+
+export const cancelAccountDeletion = async ({ userId }) => {
+  const user = await User.findById(userId);
+  if (!user) throw Errors.NOT_FOUND('User');
+  if (!user.deletionScheduledAt) throw Errors.VALIDATION_ERROR('No deletion is scheduled');
+  if (user.deletionScheduledAt < new Date()) throw Errors.VALIDATION_ERROR('Grace period has elapsed');
+  user.deletionScheduledAt = null;
+  await user.save();
+  return { message: 'Account deletion cancelled' };
+};
+```
+
+- [ ] **Step 4: Deletion job**
+
+`scheduler/jobs/accountDeletionJob.js`:
+```js
+import User from '../../models/user.js';
+import Session from '../../models/session.js';
+import Booking from '../../models/booking.js';
+
+export const runAccountDeletion = async ({ now = new Date(), log } = {}) => {
+  const due = await User.find({ deletionScheduledAt: { $lte: now, $ne: null } }).limit(50);
+  let purged = 0;
+  for (const u of due) {
+    // Hard-delete personal fields; preserve booking analytics anonymously.
+    await Session.deleteMany({ user: u._id });
+    await Booking.updateMany({ user: u._id }, { $unset: { userAddress: '', patient: '' } });
+    u.name = 'Deleted User';
+    u.email = undefined;
+    u.phone = undefined;
+    u.passwordHash = undefined;
+    u.addresses = [];
+    u.dependents = [];
+    u.gender = undefined;
+    u.birthDate = undefined;
+    u.deletionScheduledAt = null;
+    u.fcmToken = undefined;
+    await u.save();
+    purged += 1;
+  }
+  log?.info({ purged }, 'Account deletion job complete');
+  return purged;
+};
+```
+
+Register a daily interval in `scheduler/index.js`:
+```js
+const DAY = 24 * 60 * 60 * 1000;
+setInterval(() => runAccountDeletion({ now: new Date(), log: app.log })
+  .catch((e) => app.log.error({ err: e }, 'accountDeletion failed')), DAY);
+```
+
+- [ ] **Step 5: Routes**
+
+```js
+// routes/profileRoutes.js
+fastify.delete('/me', auth, deleteAccount);
+fastify.post('/me/restore', auth, restoreAccount);
+```
+
+**Checkpoint:** 3-device cap + 30-day grace deletion. Commit when ready.
+
+---
+
+## Task 25: Lab discovery — relevance sort + synonyms + recently viewed + "notify when lab joins" (§6.2)
+
+**Why (PRD):** §6.2 FR-1 default relevance blend (distance + rating + availability), FR-5 synonyms ("sugar test" → "fasting blood glucose", "thyroid" → "TSH/T3/T4"), FR-8 recently viewed labs / recent searches, "Notify me when a lab joins near me" empty-state action.
+
+**Files:**
+- Create: `services/searchSynonymService.js` — synonym expansion
+- Modify: `services/labCatalogService.js` — `nearbyLabs` accepts `sortBy=relevance` (default) and computes score
+- Create: `models/recentSearch.js`, `models/labWatch.js`
+- Add routes: `GET /api/me/recent-searches`, `POST /api/me/recent-searches`, `POST /api/me/lab-watches`
+
+- [ ] **Step 1: `services/searchSynonymService.js`**
+
+```js
+// PRD §6.2 FR-5 — small starter dictionary; admins can extend via AppContent ("search_synonyms" key).
+import { getContent } from './contentService.js';
+
+const DEFAULT = {
+  'sugar':        ['fasting blood glucose', 'random blood sugar', 'HbA1c'],
+  'sugar test':   ['fasting blood glucose', 'HbA1c'],
+  'thyroid':      ['TSH', 'T3', 'T4'],
+  'diabetes':     ['HbA1c', 'fasting blood glucose'],
+  'cholesterol':  ['lipid profile'],
+  'kidney':       ['creatinine', 'urea', 'eGFR'],
+};
+
+let cache;
+export const expand = async (term) => {
+  if (!term) return [];
+  const lower = term.toLowerCase().trim();
+  cache ||= await getContent('search_synonyms').catch(() => ({ payload: DEFAULT }));
+  const dict = cache.payload || DEFAULT;
+  return [lower, ...(dict[lower] || [])];
+};
+```
+
+- [ ] **Step 2: Relevance sort in `labCatalogService.nearbyLabs`**
+
+```js
+export const nearbyLabs = async ({ lat, lng, radius = 5000, minRating, sortBy = 'relevance', q, page = 1, limit = 20 }) => {
+  const expanded = q ? await expand(q) : null;
+  const pipeline = [
+    { $geoNear: {
+        near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+        distanceField: 'distanceMeters',
+        maxDistance: parseInt(radius),
+        spherical: true,
+        query: { isActive: true, ...(minRating ? { rating: { $gte: parseFloat(minRating) } } : {}) },
+    } },
+  ];
+  if (expanded) {
+    pipeline.push({ $lookup: {
+      from: 'tests', localField: '_id', foreignField: 'lab', as: 'matchingTests',
+      pipeline: [{ $match: { isActive: true, name: { $regex: new RegExp(expanded.join('|'), 'i') } } }],
+    } });
+    pipeline.push({ $match: { matchingTests: { $not: { $size: 0 } } } });
+  }
+  if (sortBy === 'relevance') {
+    pipeline.push({ $addFields: {
+      relevanceScore: {
+        $add: [
+          { $multiply: ['$rating', 100] },                                   // rating: bigger is better
+          { $multiply: [{ $divide: [10000, { $add: ['$distanceMeters', 100] }] }, 1] }, // closer is better
+        ],
+      },
+    } });
+    pipeline.push({ $sort: { relevanceScore: -1 } });
+  } else if (sortBy === 'distance') pipeline.push({ $sort: { distanceMeters: 1 } });
+  else if (sortBy === 'rating')     pipeline.push({ $sort: { rating: -1 } });
+
+  pipeline.push({ $skip: (parseInt(page) - 1) * parseInt(limit) });
+  pipeline.push({ $limit: parseInt(limit) });
+  const labs = await Lab.aggregate(pipeline);
+  return { labs, count: labs.length };
+};
+```
+
+- [ ] **Step 3: `models/recentSearch.js`, `models/labWatch.js`**
+
+```js
+// recentSearch.js
+const schema = new mongoose.Schema({
+  user:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  kind:  { type: String, enum: ['LAB', 'TEST', 'PACKAGE', 'QUERY'], required: true },
+  value: { type: String, required: true },
+  ref:   { type: mongoose.Schema.Types.ObjectId },
+}, { timestamps: true });
+schema.index({ user: 1, createdAt: -1 });
+
+// labWatch.js
+const schema2 = new mongoose.Schema({
+  user:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  location:    { type: { type: String, default: 'Point' }, coordinates: { type: [Number], required: true } },
+  radiusMeters:{ type: Number, default: 5000 },
+  notifiedAt:  { type: Date, default: null },
+}, { timestamps: true });
+schema2.index({ location: '2dsphere' });
+```
+
+- [ ] **Step 4: Service + routes**
+
+```js
+// services/discoveryService.js
+import RecentSearch from '../models/recentSearch.js';
+import LabWatch from '../models/labWatch.js';
+
+export const recordSearch = async ({ userId, kind, value, ref }) => {
+  await RecentSearch.create({ user: userId, kind, value, ref });
+  // Keep at most 20 per user.
+  const old = await RecentSearch.find({ user: userId }).sort({ createdAt: -1 }).skip(20);
+  if (old.length) await RecentSearch.deleteMany({ _id: { $in: old.map((r) => r._id) } });
+};
+export const listRecentSearches = (userId) =>
+  RecentSearch.find({ user: userId }).sort({ createdAt: -1 }).limit(20);
+export const watchLabsNearby = ({ userId, lat, lng, radiusMeters }) =>
+  LabWatch.create({ user: userId, location: { type: 'Point', coordinates: [lng, lat] }, radiusMeters });
+```
+
+```js
+// routes/profileRoutes.js — add:
+fastify.get('/me/recent-searches', auth, listRecentSearches);
+fastify.post('/me/recent-searches', { ...auth, schema: {
+  body: { type: 'object', required: ['kind','value'],
+    properties: { kind: { type: 'string', enum: ['LAB','TEST','PACKAGE','QUERY'] },
+                  value: { type: 'string' }, ref: { type: 'string' } } } },
+}, recordSearch);
+fastify.post('/me/lab-watches', { ...auth, schema: {
+  body: { type: 'object', required: ['lat','lng'],
+    properties: { lat: { type: 'number' }, lng: { type: 'number' }, radiusMeters: { type: 'integer' } } } },
+}, watchLabsNearby);
+```
+
+When a new lab goes active (`Lab.save()` post-hook), the matching `LabWatch` rows produce notifications via the existing `notify()` helper.
+
+**Checkpoint:** Discovery returns relevance-ranked results that respect synonyms; recent searches and watches persist per user. Commit.
+
+---
+
+## Task 26: Lab profile depth — photos, rating distribution, plain-language descriptions (§6.3)
+
+**Why (PRD):** Lab profile shows photos + masked-call + rating distribution + plain-language test copy. Test catalog shows preparation hours, sample type, savings on packages.
+
+**Files:**
+- Modify: `models/lab.js` — `photos`, `description`, `amenities`
+- Modify: `models/test.js` — `plainLanguageDescription`, `fastingHours`, `sampleType`
+- Modify: `services/labCatalogService.js` — `getLab` returns rating distribution
+- Modify: `services/healthPackageService.js` — include `savings` (mrp − price) per package
+
+- [ ] **Step 1: Lab + Test schema updates**
+
+```js
+// models/lab.js — append:
+photos:      [{ url: String, caption: String }],
+description: { type: String },
+amenities:   [{ type: String }],
+
+// models/test.js — append:
+plainLanguageDescription: { type: String },
+fastingHours:             { type: Number, default: 0 },
+sampleType:               { type: String, enum: ['Blood','Urine','Stool','Swab','Imaging','Other'], default: 'Blood' },
+```
+
+- [ ] **Step 2: Rating distribution in `getLab`**
+
+```js
+import Review from '../models/review.js';
+
+export const getLab = async (id) => {
+  const [lab, dist] = await Promise.all([
+    Lab.findById(id).populate('owner', 'name email phone').select('-__v'),
+    Review.aggregate([
+      { $match: { lab: new mongoose.Types.ObjectId(id) } },
+      { $group: { _id: '$rating', count: { $sum: 1 } } },
+    ]),
+  ]);
+  if (!lab) throw Errors.NOT_FOUND('Lab', `/labs/${id}`);
+  const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const d of dist) ratingDistribution[d._id] = d.count;
+  return { ...lab.toObject(), ratingDistribution };
+};
+```
+
+- [ ] **Step 3: Package savings**
+
+```js
+// services/healthPackageService.js — in listPackages, attach savings.
+const withSavings = (pkg) => {
+  const sumOfTests = (pkg.tests || []).reduce((s, t) => s + (t.price || 0), 0);
+  return { ...pkg.toObject(), sumOfTests, savings: Math.max(0, sumOfTests - pkg.price) };
+};
+```
+
+**Checkpoint:** lab/test/package payloads carry the depth the patient UI expects. Commit.
+
+---
+
+## Task 27: Booking state machine v2 + status-event log (§6.4 FR-7, §6.6)
+
+**Why (PRD §6.4 FR-7):** Customer-visible states are `Pending lab confirmation` → `Confirmed` → `Assistant assigned` → `On the way` → `Arrived` → `Sample collected` → `Processing` → `Report ready` → `Completed` plus `Rescheduled`, `Cancelled by you`, `Cancelled by lab`, `No-show`. Backend currently has fewer states; expand.
+
+**Files:**
+- Modify: `models/booking.js` — extend `status` enum and add `cancelBy`
+- Create: `models/bookingEvent.js` — append-only event log
+- Modify: `services/_shared/transitions.js` — add new transitions + new `buildTimeline`
+- Modify: `services/partnerService.js`, `services/bookingService.js` — emit event rows on every state change
+- Add: assistant-side actions in a future task (Task 30 builds on this)
+
+- [ ] **Step 1: Enum + cancelBy**
+
+```js
+// models/booking.js
+status: { type: String,
+  enum: [
+    'PENDING','CONFIRMED','ASSISTANT_ASSIGNED','ON_THE_WAY','ARRIVED',
+    'COLLECTED','PROCESSING','COMPLETED','RESCHEDULED','NO_SHOW','CANCELLED',
+  ],
+  default: 'PENDING' },
+cancelBy: { type: String, enum: ['CUSTOMER','LAB','SYSTEM',null], default: null },
+rescheduleCount: { type: Number, default: 0 },
+```
+
+- [ ] **Step 2: `models/bookingEvent.js`**
+
+```js
+import mongoose from 'mongoose';
+const schema = new mongoose.Schema({
+  booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true, index: true },
+  fromStatus: String,
+  toStatus:   { type: String, required: true },
+  actorType:  { type: String, enum: ['CUSTOMER','LAB_OWNER','LAB_ASSISTANT','SYSTEM'], required: true },
+  actorId:    { type: mongoose.Schema.Types.ObjectId },
+  reason:     String,
+  meta:       mongoose.Schema.Types.Mixed,
+}, { timestamps: true });
+schema.index({ booking: 1, createdAt: 1 });
+export default mongoose.model('BookingEvent', schema);
+```
+
+- [ ] **Step 3: Extend `transitions.js`**
+
+```js
+export const VALID_TRANSITIONS = {
+  PENDING:            ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED:          ['ASSISTANT_ASSIGNED', 'COLLECTED', 'RESCHEDULED', 'CANCELLED', 'NO_SHOW'],
+  ASSISTANT_ASSIGNED: ['ON_THE_WAY', 'ASSISTANT_ASSIGNED', 'CANCELLED', 'NO_SHOW'],
+  ON_THE_WAY:         ['ARRIVED', 'CANCELLED', 'NO_SHOW'],
+  ARRIVED:            ['COLLECTED', 'NO_SHOW'],
+  COLLECTED:          ['PROCESSING', 'CANCELLED'],
+  PROCESSING:         ['COMPLETED'],
+  COMPLETED:          [],
+  RESCHEDULED:        ['CONFIRMED'],
+  CANCELLED:          [],
+  NO_SHOW:            [],
+};
+
+export const TIMELINE_STEPS = ['Booked', 'Confirmed', 'On the way', 'Sample collected', 'Processing', 'Report ready'];
+const STATUS_TO_TIMELINE_INDEX = {
+  PENDING: 0, CONFIRMED: 1, ASSISTANT_ASSIGNED: 1,
+  ON_THE_WAY: 2, ARRIVED: 2,
+  COLLECTED: 3, PROCESSING: 4, COMPLETED: 5,
+  RESCHEDULED: 1, NO_SHOW: -1, CANCELLED: -1,
+};
+export const buildTimeline = (status) => {
+  const idx = STATUS_TO_TIMELINE_INDEX[status] ?? -1;
+  return TIMELINE_STEPS.map((label, i) => ({
+    label, state: i < idx ? 'done' : i === idx ? 'active' : 'pending',
+  }));
+};
+```
+
+- [ ] **Step 4: Event-log helper**
+
+```js
+// services/_shared/events.js
+import BookingEvent from '../../models/bookingEvent.js';
+export const recordEvent = async ({ booking, fromStatus, toStatus, actorType, actorId, reason, meta }) =>
+  BookingEvent.create({ booking: booking._id, fromStatus, toStatus, actorType, actorId, reason, meta });
+```
+
+Call `recordEvent({...})` from every status-changing service path (`bookingService.cancelBooking`, `partnerService.acceptBooking`, etc.).
+
+**Checkpoint:** every status change writes an event row; `GET /api/bookings/:id/events` (add a small route) returns the timeline an investigator can audit. Commit.
+
+---
+
+## Task 28: Booking policy — 10-min hold + reschedule cutoff + lab-response auto-cancel (§6.4 FR-5, FR-8, FR-9, FR-10)
+
+**Why (PRD):** §6.4 mandates a 10-minute slot hold (not 15), 4-hour reschedule cutoff with max 2 reschedules, 4-hour cancellation cutoff with lab-defined fee, and **2-hour lab-response SLA** after which the booking auto-cancels with full refund.
+
+**Files:**
+- Modify: `services/bookingService.js` — change hold to 10 min, enforce reschedule cutoff/count
+- Modify: `models/lab.js` — add `policy: { responseSlaMinutes, rescheduleCutoffHours, cancellationCutoffHours, cancellationFee, noShowFee }`
+- Create: `scheduler/jobs/labResponseSlaJob.js` — auto-cancel PENDING bookings older than the lab's SLA
+
+- [ ] **Step 1: `models/lab.js` policy block**
+
+```js
+policy: {
+  responseSlaMinutes:       { type: Number, default: 120 }, // PRD §6.4 FR-10: 2 hours
+  rescheduleCutoffHours:    { type: Number, default: 4 },   // PRD §6.4 FR-8
+  maxReschedulesPerBooking: { type: Number, default: 2 },   // PRD §6.4 FR-8
+  cancellationCutoffHours:  { type: Number, default: 4 },   // PRD §6.4 FR-9
+  cancellationFee:          { type: Number, default: 0 },
+  noShowFee:                { type: Number, default: 0 },
+  noShowGraceMinutes:       { type: Number, default: 30 },
+  homeCollectionFee:        { type: Number, default: 0 },   // PRD §6.4 FR-3
+  homeCollectionWaiverAbove:{ type: Number, default: 0 },   // PRD §6.4 FR-3: fee waived above this order value
+},
+```
+
+Apply the fee in `bookingService.createBooking` for home bookings:
+
+```js
+let homeCollectionFee = 0;
+if (collectionType === 'HOME') {
+  homeCollectionFee = lab.policy?.homeCollectionFee || 0;
+  const waiverThreshold = lab.policy?.homeCollectionWaiverAbove || 0;
+  if (waiverThreshold > 0 && cart.totalAmount >= waiverThreshold) homeCollectionFee = 0;
+}
+// ...
+const booking = await Booking.create({
+  // ...
+  totalAmount: cart.totalAmount + homeCollectionFee,
+  homeCollectionFee, // store separately for invoice line itemisation (PRD §6.8 FR-2)
+});
+```
+
+Add to `models/booking.js`:
+```js
+homeCollectionFee: { type: Number, default: 0 },
+```
+
+- [ ] **Step 2: 10-min hold (was 15)**
+
+In `services/bookingService.js`:
+```js
+const HOLD_MS = 10 * 60 * 1000; // PRD §6.4 FR-5
+// ... in createBooking:
+slotHoldExpiry: new Date(Date.now() + HOLD_MS),
+```
+
+- [ ] **Step 3: Reschedule cutoff + count**
+
+```js
+export const rescheduleBooking = async ({ user, bookingId, scheduledDate, slot }) => {
+  const booking = await Booking.findById(bookingId);
+  if (!booking || booking.user.toString() !== user._id.toString()) throw Errors.BOOKING_NOT_FOUND(`/bookings/${bookingId}`);
+  if (!['PENDING', 'CONFIRMED'].includes(booking.status)) throw Errors.INVALID_BOOKING_TRANSITION(`Cannot reschedule a ${booking.status} booking`);
+
+  const lab = await Lab.findById(booking.lab);
+  if (!lab) throw Errors.NOT_FOUND('Lab');
+  const cutoffMs = (lab.policy?.rescheduleCutoffHours ?? 4) * 3600 * 1000;
+  const slotMoment = new Date(booking.scheduledDate);
+  const [h, m] = booking.slot.start.split(':').map(Number);
+  slotMoment.setHours(h, m, 0, 0);
+  if (slotMoment.getTime() - Date.now() < cutoffMs) {
+    throw Errors.RESCHEDULE_CUTOFF_PASSED(`Reschedule cutoff is ${lab.policy?.rescheduleCutoffHours} hours before slot`);
+  }
+  const maxR = lab.policy?.maxReschedulesPerBooking ?? 2;
+  if (booking.rescheduleCount >= maxR) {
+    throw Errors.RESCHEDULE_LIMIT_REACHED(`Reschedules exhausted (max ${maxR})`);
+  }
+
+  await reserveSlot({ labId: booking.lab, scheduledDate, slotStart: slot.start,
+    maxPerSlot: lab.slotMatrix?.maxBookingsPerSlot || 5 });
+  await releaseSlot({ labId: booking.lab, scheduledDate: booking.scheduledDate, slotStart: booking.slot.start });
+  booking.scheduledDate = new Date(scheduledDate);
+  booking.slot = { start: slot.start, end: addMinutes(slot.start, lab.slotMatrix?.duration || 30) };
+  booking.rescheduleCount += 1;
+  booking.slotHoldExpiry = new Date(Date.now() + HOLD_MS);
+  await booking.save();
+  return withTimeline(booking);
+};
+```
+
+- [ ] **Step 4: Add errors**
+
+`common/errors.js`:
+```js
+RESCHEDULE_CUTOFF_PASSED: (detail) => new DomainError('RESCHEDULE_CUTOFF_PASSED', 409, detail || 'Reschedule cutoff passed'),
+RESCHEDULE_LIMIT_REACHED: (detail) => new DomainError('RESCHEDULE_LIMIT_REACHED', 409, detail || 'No more reschedules allowed'),
+CANCELLATION_FEE_APPLICABLE: (detail) => new DomainError('CANCELLATION_FEE_APPLICABLE', 200, detail || 'Cancellation fee applies'),
+```
+
+- [ ] **Step 5: Lab response SLA job**
+
+```js
+// scheduler/jobs/labResponseSlaJob.js
+import Booking from '../../models/booking.js';
+import Lab from '../../models/lab.js';
+import { releaseSlot } from '../../services/slotCapacityService.js';
+import { notifyBookingStatus } from '../../services/notificationService.js';
+import { recordEvent } from '../../services/_shared/events.js';
+
+export const runLabResponseSlaSweep = async ({ now = new Date(), log } = {}) => {
+  const candidates = await Booking.find({ status: 'PENDING', createdAt: { $lte: new Date(now.getTime() - 60 * 60 * 1000) } }).limit(200);
+  let cancelled = 0;
+  for (const b of candidates) {
+    const lab = await Lab.findById(b.lab).select('policy');
+    const slaMin = lab?.policy?.responseSlaMinutes ?? 120;
+    const slotMoment = new Date(b.scheduledDate);
+    const [hh, mm] = b.slot.start.split(':').map(Number);
+    slotMoment.setHours(hh, mm, 0, 0);
+    const slaDeadline = new Date(b.createdAt.getTime() + slaMin * 60 * 1000);
+    if (now.getTime() < Math.min(slaDeadline.getTime(), slotMoment.getTime())) continue;
+    const fromStatus = b.status;
+    b.status = 'CANCELLED';
+    b.cancelBy = 'SYSTEM';
+    b.cancelReason = 'Lab did not respond within SLA';
+    await b.save();
+    await releaseSlot({ labId: b.lab, scheduledDate: b.scheduledDate, slotStart: b.slot.start });
+    await recordEvent({ booking: b, fromStatus, toStatus: 'CANCELLED', actorType: 'SYSTEM',
+      reason: 'lab-response-sla' });
+    notifyBookingStatus(b).catch(() => {});
+    cancelled += 1;
+  }
+  log?.info({ cancelled }, 'Lab response SLA sweep complete');
+  return cancelled;
+};
+```
+
+Register on a 10-min interval in `scheduler/index.js`.
+
+**Checkpoint:** policy fields, cutoffs, max-reschedules and auto-cancel SLA enforced. Commit.
+
+---
+
+## Task 29: Subscription v2 — approve-each-time + slot intelligence + skip/pause-until + occurrence history + payment-failure auto-pause (§6.5)
+
+**Why (PRD §6.5):** Need approve-per-occurrence flow, pre-booking reminder (N days, default 3), slot intelligence (preferred window → nearest same day → next +2 days), skip / pause-until-date / resume, two consecutive payment failures auto-pause, full occurrence history per subscription.
+
+**Files:**
+- Modify: `models/subscription.js` — add policy + occurrence history reference
+- Create: `models/subscriptionOccurrence.js` — one row per occurrence
+- Modify: `services/subscriptionService.js` — split `runDueSubscriptions` into `requestNextOccurrence`, plus `skipOccurrence`, `pauseUntil`
+- Modify: `scheduler/jobs/subscriptionsJob.js` — implements the new slot-intelligence flow
+- Add routes: `POST /api/subscriptions/:id/skip-next`, `POST /api/subscriptions/:id/pause-until`, `GET /api/subscriptions/:id/occurrences`
+
+- [ ] **Step 1: Subscription policy**
+
+```js
+// models/subscription.js — append:
+preferredTimeWindow: {
+  start: { type: String, default: '09:00' },
+  end:   { type: String, default: '12:00' },
+},
+preBookingReminderDays:  { type: Number, default: 3, min: 1, max: 7 },
+approvalMode:            { type: String, enum: ['AUTO_PAY','APPROVE_EACH_TIME'], default: 'APPROVE_EACH_TIME' },
+pauseUntil:              { type: Date, default: null },
+consecutivePaymentFailures: { type: Number, default: 0 },
+collectionType:          { type: String, enum: ['HOME','IN_LAB'], default: 'IN_LAB' },
+userAddressId:           { type: mongoose.Schema.Types.ObjectId },
+dependentId:             { type: mongoose.Schema.Types.ObjectId },
+```
+
+- [ ] **Step 2: `models/subscriptionOccurrence.js`**
+
+```js
+import mongoose from 'mongoose';
+const schema = new mongoose.Schema({
+  subscription: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription', required: true, index: true },
+  scheduledFor: { type: Date, required: true },
+  state: { type: String,
+    enum: ['REMINDED','AWAITING_APPROVAL','BOOKED','SKIPPED','NO_SLOT','PAYMENT_FAILED','COMPLETED'],
+    required: true },
+  booking:  { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+  reason:   String,
+  shiftedTo: Date,
+}, { timestamps: true });
+schema.index({ subscription: 1, scheduledFor: -1 });
+export default mongoose.model('SubscriptionOccurrence', schema);
+```
+
+- [ ] **Step 3: Slot intelligence helper**
+
+```js
+// services/_shared/slotIntelligence.js
+import Lab from '../../models/lab.js';
+import Booking from '../../models/booking.js';
+import { weekdayName, addMinutes } from './slotTime.js';
+
+export const findSlot = async ({ labId, date, windowStart, windowEnd }) => {
+  for (let dayOffset = 0; dayOffset <= 2; dayOffset += 1) {
+    const day = new Date(date);
+    day.setDate(day.getDate() + dayOffset);
+    const lab = await Lab.findById(labId);
+    const hours = lab.openingHours?.[weekdayName(day)];
+    if (!hours || hours.isClosed) continue;
+    const dur = lab.slotMatrix?.duration || 30;
+    const step = lab.slotMatrix?.intervalMinutes || 30;
+    const maxPerSlot = lab.slotMatrix?.maxBookingsPerSlot || 5;
+    const winStart = dayOffset === 0 ? windowStart : hours.open;
+    const winEnd = dayOffset === 0 ? windowEnd : hours.close;
+    const startOfDay = new Date(day); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay); endOfDay.setDate(endOfDay.getDate() + 1);
+    const existing = await Booking.find({
+      lab: labId, scheduledDate: { $gte: startOfDay, $lt: endOfDay },
+      status: { $in: ['PENDING','CONFIRMED','COLLECTED','PROCESSING'] },
+    });
+    const [winSH, winSM] = winStart.split(':').map(Number);
+    const [winEH, winEM] = winEnd.split(':').map(Number);
+    let cur = winSH * 60 + winSM;
+    const end = winEH * 60 + winEM;
+    while (cur + dur <= end) {
+      const pad = (n) => String(n).padStart(2, '0');
+      const slotStart = `${pad(Math.floor(cur / 60))}:${pad(cur % 60)}`;
+      const booked = existing.filter((b) => b.slot?.start === slotStart).length;
+      if (booked < maxPerSlot) return { date: day, slot: { start: slotStart, end: addMinutes(slotStart, dur) }, shifted: dayOffset !== 0 };
+      cur += step;
+    }
+  }
+  return null;
+};
+```
+
+- [ ] **Step 4: Replace `scheduler/jobs/subscriptionsJob.js`**
+
+```js
+import Subscription from '../../models/subscription.js';
+import SubscriptionOccurrence from '../../models/subscriptionOccurrence.js';
+import Booking from '../../models/booking.js';
+import { reserveSlot } from '../../services/slotCapacityService.js';
+import { generateCode } from '../../services/bookingCodeService.js';
+import { findSlot } from '../../services/_shared/slotIntelligence.js';
+import { nextBookingDate } from '../../services/subscriptionService.js';
+import { notify } from '../../services/notificationService.js';
+
+const REMINDER_LOOKAHEAD = 7 * 24 * 3600 * 1000;
+const APPROVAL_WINDOW    = 48 * 3600 * 1000;
+
+export const runSubscriptionsJob = async ({ now = new Date(), log } = {}) => {
+  // Reminders: subs whose next occurrence is within reminderDays.
+  const subs = await Subscription.find({ status: 'ACTIVE',
+    nextBookingDate: { $lte: new Date(now.getTime() + REMINDER_LOOKAHEAD) } });
+
+  for (const sub of subs) {
+    if (sub.pauseUntil && sub.pauseUntil > now) continue;
+    const dueIn = (sub.nextBookingDate - now) / (24 * 3600 * 1000);
+    if (dueIn > sub.preBookingReminderDays) continue;
+    // Idempotency: skip if we already have an occurrence row for this date.
+    const exists = await SubscriptionOccurrence.findOne({
+      subscription: sub._id,
+      scheduledFor: { $gte: new Date(sub.nextBookingDate.getTime() - 12 * 3600 * 1000),
+                      $lte: new Date(sub.nextBookingDate.getTime() + 12 * 3600 * 1000) },
+    });
+    if (exists) continue;
+
+    if (sub.approvalMode === 'APPROVE_EACH_TIME') {
+      await SubscriptionOccurrence.create({ subscription: sub._id, scheduledFor: sub.nextBookingDate,
+        state: 'AWAITING_APPROVAL' });
+      await notify({ userId: sub.user, event: 'SUBSCRIPTION_AWAITING_APPROVAL',
+        title: 'Your subscription needs approval',
+        body: `Tap to confirm your next booking on ${sub.nextBookingDate.toDateString()}.`,
+        data: { subscriptionId: sub._id.toString() } });
+    } else {
+      const found = await findSlot({ labId: sub.lab, date: sub.nextBookingDate,
+        windowStart: sub.preferredTimeWindow?.start || '09:00',
+        windowEnd:   sub.preferredTimeWindow?.end   || '18:00' });
+      if (!found) {
+        await SubscriptionOccurrence.create({ subscription: sub._id, scheduledFor: sub.nextBookingDate,
+          state: 'NO_SLOT' });
+        await notify({ userId: sub.user, event: 'SUBSCRIPTION_NO_SLOT',
+          title: 'No slot for your recurring test', body: 'Open the app to book manually.' });
+      } else {
+        await reserveSlot({ labId: sub.lab, scheduledDate: found.date, slotStart: found.slot.start,
+          maxPerSlot: 5 });
+        const code = await generateCode();
+        const booking = await Booking.create({
+          user: sub.user, lab: sub.lab, tests: [sub.test], subscription: sub._id,
+          scheduledDate: found.date, slot: found.slot, status: 'PENDING',
+          collectionType: sub.collectionType, totalAmount: 0, code,
+          idempotencyKey: `sub_${sub._id}_${found.date.toISOString().slice(0,10)}`,
+        });
+        await SubscriptionOccurrence.create({ subscription: sub._id, scheduledFor: sub.nextBookingDate,
+          state: 'BOOKED', booking: booking._id, shiftedTo: found.shifted ? found.date : undefined });
+        sub.nextBookingDate = nextBookingDate(sub.nextBookingDate, sub.frequency, sub.customIntervalDays);
+        sub.lastRunAt = now;
+        await sub.save();
+      }
+    }
+  }
+
+  // Expire stale AWAITING_APPROVAL rows.
+  const stale = await SubscriptionOccurrence.find({ state: 'AWAITING_APPROVAL',
+    createdAt: { $lte: new Date(now.getTime() - APPROVAL_WINDOW) } });
+  for (const s of stale) { s.state = 'SKIPPED'; s.reason = 'Approval window elapsed'; await s.save(); }
+
+  log?.info('subscriptionsJob cycle complete');
+};
+```
+
+- [ ] **Step 5: New service methods + routes**
+
+```js
+// services/subscriptionService.js — add:
+import SubscriptionOccurrence from '../models/subscriptionOccurrence.js';
+
+export const approveOccurrence = async ({ userId, occurrenceId }) => {
+  const occ = await SubscriptionOccurrence.findById(occurrenceId).populate('subscription');
+  if (!occ || occ.subscription.user.toString() !== userId.toString()) throw Errors.NOT_FOUND('Occurrence');
+  if (occ.state !== 'AWAITING_APPROVAL') throw Errors.INVALID_SUBSCRIPTION_STATE('Occurrence is not awaiting approval');
+  const sub = occ.subscription;
+  const lab = await Lab.findById(sub.lab);
+  const found = await findSlot({
+    labId: sub.lab,
+    date: occ.scheduledFor,
+    windowStart: sub.preferredTimeWindow?.start || '09:00',
+    windowEnd:   sub.preferredTimeWindow?.end   || '18:00',
+  });
+  if (!found) {
+    occ.state = 'NO_SLOT';
+    await occ.save();
+    throw Errors.SLOT_UNAVAILABLE('No slot available in your preferred window');
+  }
+  await reserveSlot({ labId: sub.lab, scheduledDate: found.date, slotStart: found.slot.start,
+    maxPerSlot: lab.slotMatrix?.maxBookingsPerSlot || 5 });
+  const code = await generateCode();
+  const booking = await Booking.create({
+    user: sub.user, lab: sub.lab, tests: [sub.test], subscription: sub._id,
+    scheduledDate: found.date, slot: found.slot, status: 'PENDING',
+    collectionType: sub.collectionType, totalAmount: 0, code,
+    idempotencyKey: `sub_${sub._id}_${found.date.toISOString().slice(0,10)}`,
+  });
+  occ.state = 'BOOKED';
+  occ.booking = booking._id;
+  occ.shiftedTo = found.shifted ? found.date : undefined;
+  await occ.save();
+  sub.nextBookingDate = nextBookingDate(sub.nextBookingDate, sub.frequency, sub.customIntervalDays);
+  await sub.save();
+  return occ;
+};
+
+export const skipNextOccurrence = async ({ userId, id }) => {
+  const sub = await ownedSub(userId, id);
+  await SubscriptionOccurrence.create({ subscription: sub._id, scheduledFor: sub.nextBookingDate,
+    state: 'SKIPPED', reason: 'Skipped by user' });
+  sub.nextBookingDate = nextBookingDate(sub.nextBookingDate, sub.frequency, sub.customIntervalDays);
+  await sub.save();
+  return sub;
+};
+
+export const pauseUntil = async ({ userId, id, until }) => {
+  const sub = await ownedSub(userId, id);
+  sub.status = 'PAUSED';
+  sub.pauseUntil = new Date(until);
+  await sub.save();
+  return sub;
+};
+
+export const listOccurrences = async ({ userId, id }) => {
+  await ownedSub(userId, id);
+  return SubscriptionOccurrence.find({ subscription: id }).sort({ createdAt: -1 }).limit(100);
+};
+```
+
+```js
+// routes/subscriptionRoutes.js — add:
+fastify.post('/subscriptions/:id/skip-next', auth, skipNext);
+fastify.post('/subscriptions/:id/pause-until', { ...auth,
+  schema: { body: { type: 'object', required: ['until'],
+    properties: { until: { type: 'string', format: 'date' } } } },
+}, pauseUntilHandler);
+fastify.get('/subscriptions/:id/occurrences', auth, listOccurrences);
+fastify.post('/subscription-occurrences/:occId/approve', auth, approveOccurrence);
+```
+
+- [ ] **Step 6: Payment-failure auto-pause hook**
+
+In `services/paymentService.handleRazorpayWebhook`, on a failed payment whose transaction has a `subscription` ref:
+
+```js
+const sub = await Subscription.findById(tx.subscription);
+if (sub) {
+  sub.consecutivePaymentFailures = (sub.consecutivePaymentFailures || 0) + 1;
+  if (sub.consecutivePaymentFailures >= 2) {
+    sub.status = 'PAUSED';
+    sub.pauseUntil = null;
+    await notify({ userId: sub.user, event: 'SUBSCRIPTION_PAUSED_PAYMENT',
+      title: 'Subscription paused', body: 'Two payments failed — your subscription is paused.' });
+  }
+  await sub.save();
+}
+```
+
+**Checkpoint:** subscriptions match PRD §6.5 occurrence-by-occurrence semantics. Commit.
+
+---
+
+## Task 30: Sample-collection OTP + masked calling + visit notes (§6.6 FR-1)
+
+**Why (PRD §6.6 FR-1.5):** collection cannot be marked complete without a 4-digit OTP the user reads from the app. PRD §6.6 FR-1.3 requires masked numbers in both directions. PRD §6.6 FR-1.6 stores per-visit notes from the customer ("gate code 4521").
+
+**Files:**
+- Modify: `models/booking.js` — `visitOtp`, `visitOtpVerifiedAt`, `visitNotes`
+- Create: `services/maskedCallService.js` — abstracts Exotel/Knowlarity; stub for dev
+- Add routes:
+  - Customer: `POST /api/bookings/:id/visit-notes`, `GET /api/bookings/:id/visit-otp` (returns the 4-digit OTP to the customer in-app)
+  - Assistant: `POST /api/assistant/bookings/:id/verify-otp { otp }`, `POST /api/assistant/bookings/:id/start-journey`, `POST /api/assistant/bookings/:id/arrived`
+  - Masked call: `POST /api/calls/connect { bookingId, side: 'customer'|'lab' }`
+
+- [ ] **Step 1: Booking model**
+
+```js
+visitOtp:           { type: String },
+visitOtpVerifiedAt: { type: Date, default: null },
+visitNotes:         { type: String, maxlength: 500 },
+```
+
+- [ ] **Step 2: Generate visit OTP on `ASSISTANT_ASSIGNED`**
+
+```js
+// services/partnerService.js — extend reassignAssistant:
+if (!booking.visitOtp) {
+  booking.visitOtp = String(crypto.randomInt(1000, 9999));
+}
+if (booking.status === 'CONFIRMED') booking.status = 'ASSISTANT_ASSIGNED';
+await booking.save();
+```
+
+- [ ] **Step 3: Assistant service + routes (Lab Assistant role is added in Task 40; create the assistant-flow stub now)**
+
+```js
+// services/assistantService.js
+import Booking from '../models/booking.js';
+import LabAssistant from '../models/labAssistant.js';
+import { Errors } from '../common/errors.js';
+import { assertTransition } from './_shared/transitions.js';
+import { recordEvent } from './_shared/events.js';
+import { notifyBookingStatus } from './notificationService.js';
+
+const ownedByAssistant = async (userId, bookingId) => {
+  const asst = await LabAssistant.findOne({ user: userId, isActive: true });
+  if (!asst) throw Errors.FORBIDDEN();
+  const b = await Booking.findOne({ _id: bookingId, labAssistant: asst._id });
+  if (!b) throw Errors.BOOKING_NOT_FOUND();
+  return { booking: b, assistant: asst };
+};
+
+export const startJourney = async ({ userId, bookingId }) => {
+  const { booking } = await ownedByAssistant(userId, bookingId);
+  assertTransition(booking.status, 'ON_THE_WAY');
+  const from = booking.status; booking.status = 'ON_THE_WAY'; await booking.save();
+  await recordEvent({ booking, fromStatus: from, toStatus: 'ON_THE_WAY', actorType: 'LAB_ASSISTANT', actorId: userId });
+  notifyBookingStatus(booking).catch(() => {});
+  return booking;
+};
+
+export const markArrived = async ({ userId, bookingId }) => {
+  const { booking } = await ownedByAssistant(userId, bookingId);
+  assertTransition(booking.status, 'ARRIVED');
+  const from = booking.status; booking.status = 'ARRIVED'; await booking.save();
+  await recordEvent({ booking, fromStatus: from, toStatus: 'ARRIVED', actorType: 'LAB_ASSISTANT', actorId: userId });
+  notifyBookingStatus(booking).catch(() => {});
+  return booking;
+};
+
+export const verifyVisitOtp = async ({ userId, bookingId, otp }) => {
+  const { booking } = await ownedByAssistant(userId, bookingId);
+  if (!booking.visitOtp || booking.visitOtp !== otp) throw Errors.UNAUTHORIZED();
+  booking.visitOtpVerifiedAt = new Date();
+  assertTransition(booking.status, 'COLLECTED');
+  booking.status = 'COLLECTED'; await booking.save();
+  await recordEvent({ booking, fromStatus: 'ARRIVED', toStatus: 'COLLECTED', actorType: 'LAB_ASSISTANT', actorId: userId,
+    reason: 'visit-otp-verified' });
+  notifyBookingStatus(booking).catch(() => {});
+  return booking;
+};
+```
+
+- [ ] **Step 4: `services/maskedCallService.js`**
+
+```js
+// Provider-agnostic facade. Real impl can call Exotel/Knowlarity APIs.
+import { NODE_ENV } from '../config/env.js';
+import { Errors } from '../common/errors.js';
+
+const provider = process.env.MASKED_CALL_PROVIDER || (NODE_ENV === 'production' ? null : 'STUB');
+
+export const connect = async ({ bookingId, fromUserId, toUserId }) => {
+  if (provider === 'STUB') return { callId: `stub_${bookingId}_${Date.now()}`, virtualNumber: '+910000000000' };
+  if (!provider) throw Errors.SERVICE_UNAVAILABLE('Masked calling is not configured for this environment');
+  // Real provider call goes here.
+  return { callId: 'real_call_id', virtualNumber: '+91...' };
+};
+```
+
+Add `SERVICE_UNAVAILABLE: (detail) => new DomainError('SERVICE_UNAVAILABLE', 503, detail || 'Service unavailable')` to `common/errors.js`.
+
+- [ ] **Step 5: Routes**
+
+```js
+// routes/bookingRoutes.js
+fastify.post('/bookings/:id/visit-notes', { ...customerAuth, schema: {
+  body: { type: 'object', required: ['notes'], properties: { notes: { type: 'string', maxLength: 500 } } } },
+}, setVisitNotes);
+fastify.get('/bookings/:id/visit-otp', customerAuth, getVisitOtp); // returns { otp } once status is ASSISTANT_ASSIGNED+
+
+// routes/assistantRoutes.js (new file, registered under /api)
+fastify.post('/assistant/bookings/:id/start-journey', assistantAuth, startJourney);
+fastify.post('/assistant/bookings/:id/arrived',       assistantAuth, markArrived);
+fastify.post('/assistant/bookings/:id/verify-otp', { ...assistantAuth,
+  schema: { body: { type: 'object', required: ['otp'], properties: { otp: { type: 'string' } } } } },
+  verifyVisitOtp);
+fastify.post('/calls/connect', { ...auth, schema: {
+  body: { type: 'object', required: ['bookingId', 'side'],
+    properties: { bookingId: { type: 'string' }, side: { type: 'string', enum: ['customer','lab'] } } } },
+}, connectCall);
+```
+
+**Checkpoint:** §6.6's collection-OTP and masked-call requirements are implemented; assistants have a dedicated endpoint surface. Commit.
+
+---
+
+## Task 31: Sample issue → free re-collection (§6.6 edge)
+
+**Why (PRD):** When a lab flags a hemolyzed/insufficient sample, customer must get an apology notification + a free re-collection booking flow.
+
+**Files:**
+- Modify: `services/partnerService.js` — `flagSampleIssue({ bookingId, reason })`
+- Add route: `POST /api/partner/bookings/:id/sample-issue`
+- Modify: `services/bookingService.js` — `createBooking` honors `recollectionOf` (skips charge)
+
+```js
+// services/partnerService.js
+export const flagSampleIssue = async ({ userId, bookingId, reason }) => {
+  const { booking } = await findOwnedBooking(userId, bookingId, `/partner/bookings/${bookingId}/sample-issue`);
+  if (!['COLLECTED', 'PROCESSING'].includes(booking.status)) {
+    throw Errors.INVALID_BOOKING_TRANSITION(`Cannot flag a ${booking.status} booking`);
+  }
+  booking.status = 'CANCELLED';
+  booking.cancelBy = 'LAB';
+  booking.cancelReason = `Sample issue: ${reason}`;
+  await booking.save();
+  await notify({ userId: booking.user, event: 'SAMPLE_ISSUE',
+    title: 'We need to re-collect your sample',
+    body: 'Your sample had an issue — we\'ll re-collect at no extra charge.',
+    data: { bookingId: booking._id.toString(), recollection: true } });
+  return booking;
+};
+```
+
+`bookingService.createBooking` accepts `recollectionOf: bookingId`. When present, `totalAmount` is set to 0 and the new booking carries `meta.recollectionOf` for analytics.
+
+**Checkpoint:** sample-issue flow ends in a free re-collection. Commit.
+
+---
+
+## Task 32: Reports v2 — per-test partials + replace-with-reason + TAT board (§6.7, §7.6)
+
+**Why (PRD §6.7 FR-6):** multi-test bookings receive partial reports ("2 of 3 ready"). PRD §7.6 FR-4: replace published report with mandatory reason; old version permanently inaccessible. PRD §7.6 FR-5: TAT board for the lab.
+
+**Files:**
+- Modify: `models/booking.js` — drop single `report` ref; use `reports: [{ test, report }]` map
+- Modify: `models/report.js` — `replacedAt`, `replacedBy`, `replaceReason`, `expectedAt`
+- Modify: `services/reportService.js` — `replaceReport`, `getTatBoard`
+- Add routes: `PUT /api/partner/bookings/:id/reports/:reportId`, `GET /api/partner/tat-board`
+
+- [ ] **Step 1: Booking + Report changes**
+
+```js
+// models/booking.js — replace single `report` with:
+reports: [{
+  test:   { type: mongoose.Schema.Types.ObjectId, ref: 'Test' },
+  report: { type: mongoose.Schema.Types.ObjectId, ref: 'Report' },
+}],
+
+// models/report.js — add:
+replacedAt:    { type: Date, default: null },
+replacedBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'Report' },
+replaceReason: String,
+expectedAt:    Date,
+isAccessible:  { type: Boolean, default: true },
+```
+
+`linkReport` pushes onto `booking.reports[]`, marks status `COMPLETED` only when **every** test in the booking has a report.
+
+- [ ] **Step 2: Replace flow**
+
+```js
+export const replaceReport = async ({ userId, oldReportId, uri, checksum, parameters, reason }) => {
+  const old = await Report.findById(oldReportId);
+  if (!old) throw Errors.NOT_FOUND('Report');
+  // Lab ownership check (omitted: same as in partnerService.findOwnedBooking).
+  const fresh = await Report.create({
+    booking: old.booking, test: old.test,
+    file: { uri, storageProvider: 'FIREBASE', checksum },
+    parameters: parameters || [], issuedAt: new Date(), isAccessible: true,
+  });
+  old.isAccessible = false;
+  old.replacedAt = new Date();
+  old.replacedBy = fresh._id;
+  old.replaceReason = reason;
+  await old.save();
+  await notify({ userId, event: 'REPORT_REPLACED',
+    title: 'Report updated', body: `Your previous report was replaced. Reason: ${reason}` });
+  return fresh;
+};
+```
+
+- [ ] **Step 3: TAT board**
+
+```js
+export const getTatBoard = async (userId) => {
+  const lab = await getOwnedLab(userId);
+  const now = new Date();
+  const items = await Booking.aggregate([
+    { $match: { lab: lab._id, status: 'PROCESSING' } },
+    { $lookup: { from: 'tests', localField: 'tests', foreignField: '_id', as: 'testDocs' } },
+    { $addFields: { expectedAt: { $add: ['$createdAt',
+        { $multiply: [{ $max: '$testDocs.turnaroundHours' }, 3600 * 1000] }] } } },
+    { $addFields: {
+        dueSoon: { $and: [{ $gt: ['$expectedAt', now] }, { $lt: ['$expectedAt', new Date(now.getTime() + 4 * 3600 * 1000)] }] },
+        overdue: { $lt: ['$expectedAt', now] },
+    } },
+    { $sort: { expectedAt: 1 } },
+  ]);
+  return { items };
+};
+```
+
+Add route: `GET /api/partner/tat-board`.
+
+**Checkpoint:** per-test partials, lab-side replace, TAT board live. Commit.
+
+---
+
+## Task 33: Payments v2 — invoice PDF, payment history, refund tracker, partial refund, double-pay reversal (§6.8)
+
+**Why (PRD §6.8):** invoice per payment downloadable as PDF, refund states `Initiated → Processed → Credited`, partial cancellation refund, double-pay auto-reversal.
+
+**Files:**
+- Create: `models/invoice.js`, `models/refund.js`
+- Create: `services/invoiceService.js` — generates a PDF (use `pdfkit`)
+- Modify: `services/paymentService.js` — emit invoice on webhook `payment.captured`; double-pay detection; partial refund API
+- Add routes: `GET /api/me/payments`, `GET /api/invoices/:id`, `POST /api/bookings/:id/refund`
+
+- [ ] **Step 1: `models/invoice.js`**
+
+```js
+const schema = new mongoose.Schema({
+  user:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  booking:     { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+  transaction: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' },
+  number:      { type: String, required: true, unique: true },
+  lines: [{ description: String, amount: Number, qty: Number }],
+  subtotal:    Number,
+  tax:         { type: Number, default: 0 },
+  discount:    { type: Number, default: 0 },
+  total:       Number,
+  pdfUri:      String,
+}, { timestamps: true });
+```
+
+- [ ] **Step 2: `models/refund.js`**
+
+```js
+const schema = new mongoose.Schema({
+  booking:     { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true, index: true },
+  transaction: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
+  amount:      { type: Number, required: true },
+  reason:      String,
+  state: { type: String, enum: ['INITIATED','PROCESSED','CREDITED','FAILED'], default: 'INITIATED' },
+  providerRefundId: String,
+  expectedAt:       Date,
+}, { timestamps: true });
+```
+
+- [ ] **Step 3: Invoice generation**
+
+```js
+// services/invoiceService.js
+import PDFDocument from 'pdfkit';
+import { storage } from '../integrations/storage/storage.js';
+import Invoice from '../models/invoice.js';
+
+const next = async () => {
+  const last = await Invoice.findOne().sort({ createdAt: -1 });
+  const lastN = last ? parseInt(last.number.split('-').pop()) : 0;
+  return `LBZ-INV-${new Date().getFullYear()}-${String(lastN + 1).padStart(6, '0')}`;
+};
+
+export const generateInvoice = async ({ user, booking, transaction, tests }) => {
+  const number = await next();
+  const lines = tests.map((t) => ({ description: t.name, amount: t.price, qty: 1 }));
+  const subtotal = lines.reduce((s, l) => s + l.amount * l.qty, 0);
+  const total = subtotal;
+  // Render PDF (kept short — full template lives in a future task).
+  const doc = new PDFDocument();
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  doc.fontSize(18).text('Labzy Invoice', { align: 'right' }).moveDown();
+  doc.fontSize(11).text(`Invoice: ${number}`).text(`Booking: ${booking.code}`).moveDown();
+  for (const l of lines) doc.text(`${l.description} — ₹${l.amount}`);
+  doc.moveDown().text(`Total: ₹${total}`);
+  doc.end();
+  await new Promise((res) => doc.on('end', res));
+  const pdfPath = `invoices/${number}.pdf`;
+  await storage.uploadBuffer(Buffer.concat(chunks), pdfPath, 'application/pdf');
+  return Invoice.create({ user: user._id, booking: booking._id, transaction: transaction._id,
+    number, lines, subtotal, total, pdfUri: pdfPath });
+};
+```
+
+- [ ] **Step 4: Refund + double-pay reversal**
+
+```js
+// services/paymentService.js — extend handleRazorpayWebhook:
+// 1) Successful capture: emit invoice + check for duplicate.
+const dup = await Transaction.findOne({ booking: tx.booking, _id: { $ne: tx._id }, status: 'CAPTURED' });
+if (dup) await issueRefund({ transactionId: tx._id, amount: tx.amount, reason: 'duplicate payment' });
+else await generateInvoice({ user, booking, transaction: tx, tests });
+
+// services/refundService.js
+export const issueRefund = async ({ transactionId, amount, reason }) => {
+  const tx = await Transaction.findById(transactionId);
+  if (!tx) throw Errors.NOT_FOUND('Transaction');
+  // Stub when no real provider key.
+  const providerRefundId = process.env.RAZORPAY_KEY_ID
+    ? await razorpayRefund(tx.providerPaymentId, amount)
+    : `mock_refund_${Date.now()}`;
+  return Refund.create({ booking: tx.booking, transaction: tx._id, amount, reason,
+    state: 'INITIATED', providerRefundId,
+    expectedAt: new Date(Date.now() + 5 * 24 * 3600 * 1000) });
+};
+```
+
+- [ ] **Step 5: Routes**
+
+```js
+fastify.get('/me/payments', auth, listPayments);             // bundles invoices + refunds
+fastify.get('/invoices/:id', auth, getInvoice);              // returns signed PDF URL
+fastify.post('/bookings/:id/refund', auth, requestRefund);   // partial refund supported via {testIds:[]}
+```
+
+**Checkpoint:** §6.8 closed. Commit.
+
+---
+
+## Task 34: Promo codes (§6.8 FR-7)
+
+**Files:**
+- Create: `models/promoCode.js` — `{ code, kind: 'PCT'|'FLAT', value, minOrder, maxDiscount, validFrom, validUntil, perUserLimit, totalLimit, usedCount }`
+- Create: `services/promoService.js` — `validate(code, user, cart)`; returns `{ discount }` or throws
+- Modify: `bookingService.createBooking` — accepts `promoCode`; computes `totalAmount` net of discount; records `appliedPromo` on Booking
+
+```js
+// services/promoService.js
+export const validate = async ({ code, user, subtotal }) => {
+  const p = await PromoCode.findOne({ code: code.toUpperCase() });
+  if (!p) throw Errors.PROMO_INVALID('Invalid code');
+  const now = new Date();
+  if (p.validFrom > now || p.validUntil < now) throw Errors.PROMO_INVALID('Code is expired');
+  if (subtotal < (p.minOrder || 0)) throw Errors.PROMO_INVALID(`Minimum order is ₹${p.minOrder}`);
+  if (p.totalLimit && p.usedCount >= p.totalLimit) throw Errors.PROMO_INVALID('Code limit reached');
+  // Per-user limit (count past bookings with this code).
+  const usedByUser = await Booking.countDocuments({ user: user._id, 'appliedPromo.code': p.code });
+  if (p.perUserLimit && usedByUser >= p.perUserLimit) throw Errors.PROMO_INVALID('You have used this code');
+  const raw = p.kind === 'PCT' ? Math.floor((subtotal * p.value) / 100) : p.value;
+  return { discount: Math.min(raw, p.maxDiscount || raw), promo: p };
+};
+```
+
+Add `PROMO_INVALID: (detail) => new DomainError('PROMO_INVALID', 400, detail || 'Invalid promo code')`.
+
+**Checkpoint:** promo flow works. Commit.
+
+---
+
+## Task 35: Notification preferences + quiet hours + SMS fallback (§6.10)
+
+**Why (PRD §6.10):** critical (non-disablable) vs configurable categories; quiet hours 10pm-7am for non-critical; channels: push (primary), SMS fallback when push fails, email for invoices/reports.
+
+**Files:**
+- Modify: `models/user.js` — `notificationPreferences`
+- Create: `services/smsService.js` — provider abstraction (same shape as `otpService`)
+- Modify: `services/notificationService.js` — gate by category + quiet hours; fallback to SMS for critical when push unavailable
+
+```js
+// models/user.js — append:
+notificationPreferences: {
+  promotions:                { type: Boolean, default: false },
+  preBookingReminderEnabled: { type: Boolean, default: true },
+  preparationReminders:      { type: Boolean, default: true },
+  ratingPrompts:             { type: Boolean, default: true },
+  channelsByCategory: {
+    CRITICAL: { push: { type: Boolean, default: true }, sms: { type: Boolean, default: true }, email: { type: Boolean, default: true } },
+    OPTIONAL: { push: { type: Boolean, default: true }, sms: { type: Boolean, default: false }, email: { type: Boolean, default: false } },
+  },
+  quietHours: { start: { type: String, default: '22:00' }, end: { type: String, default: '07:00' } },
+},
+```
+
+```js
+// services/notificationService.js — within notify():
+const isCritical = ['BOOKING_STATUS','PAYMENT_SUCCESS','PAYMENT_FAILED','REPORT_READY',
+                    'SUBSCRIPTION_AWAITING_APPROVAL','VISIT_OTP_REQUIRED'].includes(event);
+const u = await User.findById(userId).select('notificationPreferences fcmToken phone email');
+
+if (!isCritical) {
+  const { start, end } = u.notificationPreferences?.quietHours || {};
+  if (inQuietHours(new Date(), start, end)) {
+    return Notification.create({ user: userId, event, title, body, data, deliveredAt: null });
+  }
+}
+const cat = isCritical ? 'CRITICAL' : 'OPTIONAL';
+const ch = u.notificationPreferences?.channelsByCategory?.[cat] || {};
+const doc = await Notification.create({ user: userId, event, title, body, data });
+broadcast(userId, { id: doc._id.toString(), event, title, body, data, at: new Date().toISOString() });
+if (ch.push !== false) await sendPush(userId, title, body, data);
+if (isCritical && ch.sms && u.phone) await sendSms(u.phone, `${title}: ${body}`);
+return doc;
+```
+
+Add route: `PUT /api/me/notification-preferences`.
+
+**Checkpoint:** quiet hours + critical-vs-optional gating. Commit.
+
+---
+
+## Task 36: Reviews v2 — sub-ratings + lab reply + moderation + abuse report (§6.11)
+
+**Why (PRD §6.11):** sub-ratings (assistant, timeliness, TAT), lab can post one public reply per review, abuse moderation (profanity + PII), report-inappropriate flow.
+
+**Files:**
+- Modify: `models/review.js` — `subRatings`, `reply`, `moderationStatus`, `reportedBy`
+- Modify: `services/reviewService.js` — `replyToReview`, `flagReview`
+- Create: `services/_shared/moderation.js` — basic profanity + phone-number regex
+
+```js
+// models/review.js — append:
+subRatings: {
+  assistant:  { type: Number, min: 1, max: 5 },
+  timeliness: { type: Number, min: 1, max: 5 },
+  tat:        { type: Number, min: 1, max: 5 },
+},
+reply: {
+  text:      String,
+  repliedAt: Date,
+  repliedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+},
+moderationStatus: { type: String, enum: ['PENDING','APPROVED','REJECTED'], default: 'PENDING' },
+reportedBy:       [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+```
+
+```js
+// services/_shared/moderation.js
+const PROFANITY = [/* curated list */];
+const PII_PATTERNS = [/\b\d{10}\b/, /\b[\w.+-]+@[\w-]+\.[a-z]+\b/i];
+export const moderate = (text) => {
+  if (!text) return { ok: true };
+  for (const p of PROFANITY) if (p.test(text)) return { ok: false, reason: 'profanity' };
+  for (const p of PII_PATTERNS) if (p.test(text)) return { ok: false, reason: 'personal-info' };
+  return { ok: true };
+};
+```
+
+`reviewService.createReview` runs `moderate(comment)`. If `ok === false` → `moderationStatus = 'REJECTED'`, do not include in lab rating recompute.
+
+Add routes:
+- `POST /api/labs/:id/reviews/:reviewId/reply` (LAB_OWNER)
+- `POST /api/reviews/:id/report { reason }` (CUSTOMER)
+
+**Checkpoint:** §6.11 closed. Commit.
+
+---
+
+## Task 37: Help & support tickets (§6.12)
+
+**Files:**
+- Create: `models/ticket.js`
+- Create: `services/ticketService.js`
+- Add routes:
+  - `POST /api/tickets`
+  - `GET /api/tickets`
+  - `GET /api/tickets/:id`
+  - `POST /api/tickets/:id/messages`
+  - `POST /api/tickets/:id/reopen`
+
+```js
+// models/ticket.js
+const schema = new mongoose.Schema({
+  user:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  booking:     { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+  category: { type: String, required: true,
+    enum: ['DELAY','REFUND','REPORT_ISSUE','ASSISTANT_BEHAVIOR','PAYMENT','SAFETY','OTHER'] },
+  priority:    { type: String, enum: ['NORMAL','HIGH'], default: 'NORMAL' },
+  state:       { type: String, enum: ['OPEN','IN_PROGRESS','RESOLVED'], default: 'OPEN' },
+  subject:     { type: String, required: true },
+  messages: [{
+    fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    fromRole:   { type: String, enum: ['CUSTOMER','SUPPORT'], required: true },
+    text:       String,
+    attachments:[{ uri: String }],
+    createdAt:  { type: Date, default: Date.now },
+  }],
+  resolutionNote: String,
+  resolvedAt:     Date,
+}, { timestamps: true });
+```
+
+`createTicket` auto-flags `priority='HIGH'` when category is `REFUND`, `REPORT_ISSUE`, `SAFETY`, or `PAYMENT` (PRD §6.12 FR-4). Reopen allowed within 7 days of `resolvedAt`.
+
+**Checkpoint:** support flow live. Commit.
+
+---
+
+## Task 38: Lab documents + verification gate + vacation mode + multi-branch (§7.1)
+
+**Why (PRD §7.1):** labs only become discoverable after documents are verified; certification badges map 1:1 to verified documents; expiry auto-removes badges; vacation mode pauses new bookings.
+
+**Files:**
+- Create: `models/labDocument.js`
+- Modify: `models/lab.js` — `state` enum (`DRAFT/UNDER_REVIEW/LIVE/PAUSED/SUSPENDED`), `parentLab` (multi-branch)
+- Modify: `services/labCatalogService.js` — only show `state==='LIVE'` and `state!=='PAUSED'`
+- Create: `scheduler/jobs/docExpiryJob.js` — notify 30/7/1 days before, then drop badge
+- Add routes: `POST /api/partner/lab/documents`, `GET /api/partner/lab/documents`, `POST /api/partner/lab/vacation`, `POST /api/partner/branches`
+
+```js
+// models/labDocument.js
+const schema = new mongoose.Schema({
+  lab:        { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true, index: true },
+  kind:       { type: String, enum: ['REGISTRATION','NABL','ID_PROOF','OTHER'], required: true },
+  file:       { uri: String, checksum: String },
+  state:      { type: String, enum: ['SUBMITTED','UNDER_REVIEW','VERIFIED','REJECTED','EXPIRED'], default: 'SUBMITTED' },
+  rejectionReason: String,
+  verifiedAt: Date,
+  expiresAt:  Date,
+}, { timestamps: true });
+schema.index({ lab: 1, state: 1 });
+```
+
+```js
+// models/lab.js — append:
+state: { type: String, enum: ['DRAFT','UNDER_REVIEW','LIVE','PAUSED','SUSPENDED'], default: 'DRAFT' },
+parentLab: { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', default: null },
+vacationRange: { from: Date, to: Date },
+```
+
+Catalog filter: `Lab.find({ state: 'LIVE', ... })` (plus vacation check before serving slots).
+
+```js
+// scheduler/jobs/docExpiryJob.js
+import LabDocument from '../../models/labDocument.js';
+import { notify } from '../../services/notificationService.js';
+
+export const runDocExpiry = async ({ now = new Date() } = {}) => {
+  const docs = await LabDocument.find({ state: 'VERIFIED', expiresAt: { $lte: new Date(now.getTime() + 30 * 24 * 3600 * 1000) } })
+    .populate({ path: 'lab', populate: { path: 'owner', select: '_id' } });
+  for (const d of docs) {
+    const daysLeft = Math.ceil((d.expiresAt - now) / (24 * 3600 * 1000));
+    if (daysLeft <= 0) {
+      d.state = 'EXPIRED'; await d.save();
+      await notify({ userId: d.lab.owner._id, event: 'CERT_EXPIRED',
+        title: 'Certification expired', body: `${d.kind} expired — re-upload to keep your badge.` });
+    } else if ([30, 7, 1].includes(daysLeft)) {
+      await notify({ userId: d.lab.owner._id, event: 'CERT_EXPIRING',
+        title: `Certification expires in ${daysLeft} days`, body: `${d.kind} expires soon.` });
+    }
+  }
+};
+```
+
+`POST /api/partner/lab/vacation { from, to }` toggles `vacationRange` and `state='PAUSED'` for that range.
+
+**Checkpoint:** verification gate + multi-branch + vacation. Commit.
+
+---
+
+## Task 39: Master test directory + test publish states + slot capacity per mode + blackout dates (§7.2)
+
+**Files:**
+- Create: `models/masterTest.js` — canonical names/sample types/descriptions Labzy curates
+- Modify: `models/test.js` — add `state` enum (`DRAFT/PUBLISHED/TEMP_UNAVAILABLE/DISCONTINUED`), `masterTestId`, `homeAvailable`, `inLabAvailable`
+- Modify: `models/lab.js` — `slotMatrix` becomes `slotMatrixByMode: { HOME, IN_LAB }` and `blackoutDates: [Date]`
+- Modify: `services/labCatalogService.computeLabSlots` — accept `mode` param
+
+```js
+// models/masterTest.js
+const schema = new mongoose.Schema({
+  name:                     { type: String, required: true, unique: true },
+  category:                 String,
+  sampleType:               { type: String, enum: ['Blood','Urine','Stool','Swab','Imaging','Other'] },
+  plainLanguageDescription: String,
+  defaultPreparation:       String,
+  defaultFastingHours:      { type: Number, default: 0 },
+}, { timestamps: true });
+```
+
+```js
+// models/test.js — extend:
+state:        { type: String, enum: ['DRAFT','PUBLISHED','TEMP_UNAVAILABLE','DISCONTINUED'], default: 'DRAFT' },
+masterTestId: { type: mongoose.Schema.Types.ObjectId, ref: 'MasterTest' },
+homeAvailable:  { type: Boolean, default: true },
+inLabAvailable: { type: Boolean, default: true },
+```
+
+Publish guard in service:
+```js
+export const publishTest = async ({ testId }) => {
+  const t = await Test.findById(testId);
+  if (!t) throw Errors.NOT_FOUND('Test');
+  if (!t.price || !t.turnaroundHours || (!t.homeAvailable && !t.inLabAvailable)) {
+    throw Errors.VALIDATION_ERROR('Cannot publish: missing price, TAT, or mode availability');
+  }
+  t.state = 'PUBLISHED';
+  await t.save();
+  return t;
+};
+```
+
+`computeLabSlots({ labId, date, mode })` — pick `lab.slotMatrixByMode[mode]` and `blackoutDates`.
+
+**Checkpoint:** catalog matches §7.2. Commit.
+
+---
+
+## Task 40: Staff roles — Lab Manager + Lab Assistant login + assistant day view + metrics (§7.4)
+
+**Why (PRD §7.4):** Lab Manager + Lab Assistant roles, assistants see only their own day, owners see per-assistant metrics. **Auth method override:** PRD specifies mobile + OTP login for staff; we use email + password instead (see auth-policy note at the top of Phase 3). Owners create staff accounts with email + password via a partner-side endpoint.
+
+**Files:**
+- Modify: `middlewares/rbacMiddleware.js` — already supports multiple roles
+- Modify: `models/user.js` — add `LAB_MANAGER` to the `roles` enum
+- Modify: `models/labAssistant.js` — `photoUrl`, `idVerifiedAt`
+- Modify: `services/assistantService.js` (created Task 30) — add `getMyDay({ userId })`
+- Modify: `services/partnerService.js` — `createStaffUser`, `getAssistantMetrics`
+- Add routes:
+  - `POST /api/partner/staff` (owner creates a Lab Manager or Lab Assistant user with email + password)
+  - `GET /api/assistant/day`
+  - `GET /api/partner/assistants/:id/metrics`
+
+- [ ] **Step 0: Staff account creation (email+password, owner-issued)**
+
+```js
+// services/partnerService.js
+import bcrypt from 'bcryptjs';
+import LabAssistant from '../models/labAssistant.js';
+
+export const createStaffUser = async ({ userId: ownerId, name, email, password, phone, role, photoUrl }) => {
+  const lab = await getOwnedLab(ownerId);
+  if (!['LAB_MANAGER', 'LAB_ASSISTANT'].includes(role)) {
+    throw Errors.VALIDATION_ERROR('Role must be LAB_MANAGER or LAB_ASSISTANT');
+  }
+  if (await User.findOne({ email })) throw Errors.CONFLICT('Email already in use');
+  const passwordHash = await bcrypt.hash(password, 12);
+  const staff = await User.create({ name, email, passwordHash, phone, roles: [role] });
+  if (role === 'LAB_ASSISTANT') {
+    if (!photoUrl) throw Errors.VALIDATION_ERROR('Assistant photo is required'); // PRD §7.4 FR-2
+    await LabAssistant.create({ lab: lab._id, user: staff._id, name, phone, photoUrl, isActive: true });
+  }
+  return { id: staff._id, name: staff.name, email: staff.email, role };
+};
+```
+
+```js
+// routes/partnerRoutes.js
+fastify.post('/partner/staff', {
+  ...ownerAuth,
+  schema: {
+    body: { type: 'object', required: ['name', 'email', 'password', 'role'],
+      properties: {
+        name:     { type: 'string', minLength: 2 },
+        email:    { type: 'string', format: 'email' },
+        password: { type: 'string', minLength: 6 },
+        phone:    { type: 'string' },
+        role:     { type: 'string', enum: ['LAB_MANAGER', 'LAB_ASSISTANT'] },
+        photoUrl: { type: 'string' },
+      }, additionalProperties: false },
+  },
+}, createStaff);
+```
+
+```js
+// services/assistantService.js
+export const getMyDay = async ({ userId }) => {
+  const asst = await LabAssistant.findOne({ user: userId, isActive: true });
+  if (!asst) throw Errors.FORBIDDEN();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  return Booking.find({ labAssistant: asst._id,
+    scheduledDate: { $gte: today, $lt: tomorrow },
+    status: { $in: ['ASSISTANT_ASSIGNED','ON_THE_WAY','ARRIVED','COLLECTED'] } })
+    .populate('user', 'name phone')
+    .populate('tests', 'name')
+    .sort({ 'slot.start': 1 });
+};
+
+// services/partnerService.js
+export const getAssistantMetrics = async ({ userId, assistantId }) => {
+  const lab = await getOwnedLab(userId);
+  const asst = await LabAssistant.findOne({ _id: assistantId, lab: lab._id });
+  if (!asst) throw Errors.NOT_FOUND('Assistant');
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const [completed, onTime, otpFailed, noShows] = await Promise.all([
+    Booking.countDocuments({ labAssistant: asst._id, status: 'COMPLETED', createdAt: { $gte: since } }),
+    Booking.countDocuments({ labAssistant: asst._id, status: 'COLLECTED', visitOtpVerifiedAt: { $ne: null }, createdAt: { $gte: since } }),
+    Booking.countDocuments({ labAssistant: asst._id, status: { $in: ['ARRIVED'] }, visitOtpVerifiedAt: null, createdAt: { $gte: since } }),
+    Booking.countDocuments({ labAssistant: asst._id, status: 'NO_SHOW', createdAt: { $gte: since } }),
+  ]);
+  return { completed, onTime, otpFailed, noShows };
+};
+```
+
+**Checkpoint:** staff roles + metrics. Commit.
+
+---
+
+## Task 41: Lab-scoped customer history + staff notes (§7.5)
+
+**Files:**
+- Create: `models/labCustomerNote.js` — `{ lab, customer, note, createdBy }`
+- Modify: `services/partnerService.getCustomerHistory` — scope strictly to caller's lab and attach notes
+- Add routes: `POST /api/partner/customers/:customerId/notes`, `DELETE /api/partner/customers/:customerId/notes/:id`
+
+```js
+// models/labCustomerNote.js
+const schema = new mongoose.Schema({
+  lab:       { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true, index: true },
+  customer:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  note:      { type: String, required: true, maxlength: 500 },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+schema.index({ lab: 1, customer: 1, createdAt: -1 });
+```
+
+Existing `getCustomerHistory` already filters by `lab: lab._id` — that satisfies PRD's cross-lab privacy clause. This task only adds the notes overlay.
+
+**Checkpoint:** PRD §7.5 closed. Commit.
+
+---
+
+## Task 42: Analytics v2 — acceptance / no-show / TAT compliance / peak heatmap / quality panel (§7.8)
+
+**Why (PRD §7.8):** existing analytics (Phase 1 Task 7) only cover totals + revenue. PRD wants acceptance rate, no-show rate, TAT compliance %, peak-hours heatmap, quality panel (rating trend + reviews feed with reply action).
+
+**Files:**
+- Modify: `services/partnerService.js` — `getAnalyticsOverview` returns the additional metrics
+- Modify: `services/partnerService.js` — new `getQualityPanel`, `getHeatmap`
+- Add routes: `GET /api/partner/analytics/heatmap`, `GET /api/partner/analytics/quality`
+
+```js
+export const getAnalyticsOverview = async (userId) => {
+  const lab = await getOwnedLab(userId);
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const [total, accepted, completed, cancelled, noShows, revenue, tatHits, tatMisses] = await Promise.all([
+    Booking.countDocuments({ lab: lab._id, createdAt: { $gte: since } }),
+    Booking.countDocuments({ lab: lab._id, status: { $in: ['CONFIRMED','COLLECTED','PROCESSING','COMPLETED'] }, createdAt: { $gte: since } }),
+    Booking.countDocuments({ lab: lab._id, status: 'COMPLETED', createdAt: { $gte: since } }),
+    Booking.countDocuments({ lab: lab._id, status: 'CANCELLED', createdAt: { $gte: since } }),
+    Booking.countDocuments({ lab: lab._id, status: 'NO_SHOW', createdAt: { $gte: since } }),
+    Booking.aggregate([
+      { $match: { lab: lab._id, status: 'COMPLETED', createdAt: { $gte: since } } },
+      { $group: { _id: null, gross: { $sum: '$totalAmount' } } },
+    ]),
+    // TAT hit / miss via aggregation: compare report.issuedAt − booking.createdAt to max(test.turnaroundHours).
+    Report.aggregate([
+      { $lookup: { from: 'bookings', localField: 'booking', foreignField: '_id', as: 'b' } },
+      { $unwind: '$b' },
+      { $match: { 'b.lab': lab._id, 'b.createdAt': { $gte: since } } },
+      { $lookup: { from: 'tests', localField: 'b.tests', foreignField: '_id', as: 'tDocs' } },
+      { $addFields: {
+          expectedAt: { $add: ['$b.createdAt',
+            { $multiply: [{ $max: '$tDocs.turnaroundHours' }, 3600 * 1000] }] },
+      } },
+      { $group: { _id: null,
+          hit:  { $sum: { $cond: [{ $lte: ['$issuedAt', '$expectedAt'] }, 1, 0] } },
+          miss: { $sum: { $cond: [{ $gt:  ['$issuedAt', '$expectedAt'] }, 1, 0] } },
+      } },
+    ]).then((r) => r[0]?.hit  || 0),
+    Report.aggregate([
+      { $lookup: { from: 'bookings', localField: 'booking', foreignField: '_id', as: 'b' } },
+      { $unwind: '$b' },
+      { $match: { 'b.lab': lab._id, 'b.createdAt': { $gte: since } } },
+      { $lookup: { from: 'tests', localField: 'b.tests', foreignField: '_id', as: 'tDocs' } },
+      { $addFields: {
+          expectedAt: { $add: ['$b.createdAt',
+            { $multiply: [{ $max: '$tDocs.turnaroundHours' }, 3600 * 1000] }] },
+      } },
+      { $group: { _id: null,
+          miss: { $sum: { $cond: [{ $gt: ['$issuedAt', '$expectedAt'] }, 1, 0] } },
+      } },
+    ]).then((r) => r[0]?.miss || 0),
+  ]);
+  return {
+    bookings: { total, accepted, completed, cancelled, noShows },
+    revenue: { gross: revenue[0]?.gross || 0 },
+    rates: {
+      acceptanceRate: total ? accepted / total : 0,
+      noShowRate:     total ? noShows  / total : 0,
+      tatCompliance:  (tatHits + tatMisses) ? tatHits / (tatHits + tatMisses) : 1,
+    },
+  };
+};
+
+export const getHeatmap = async (userId) => {
+  const lab = await getOwnedLab(userId);
+  return Booking.aggregate([
+    { $match: { lab: lab._id, status: { $in: ['COMPLETED','CONFIRMED'] } } },
+    { $group: { _id: { weekday: { $dayOfWeek: '$scheduledDate' }, hour: { $substrBytes: ['$slot.start', 0, 2] } },
+                count: { $sum: 1 } } },
+  ]);
+};
+```
+
+**Checkpoint:** PRD §7.8 metrics live. Commit.
+
+---
+
+## Task 43: Earnings, settlements, disputes (§7.9)
+
+**Files:**
+- Create: `models/settlement.js`, `models/settlementLine.js`, `models/settlementDispute.js`
+- Create: `services/settlementService.js` — `accrueLine(booking)`, `runSettlementCycle(lab)`, `raiseDispute`, `listEarnings`
+- Add routes: `GET /api/partner/earnings`, `GET /api/partner/settlements/:id`, `POST /api/partner/settlements/:lineId/dispute`
+
+```js
+// models/settlement.js
+const schema = new mongoose.Schema({
+  lab:        { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true, index: true },
+  cycleStart: Date,
+  cycleEnd:   Date,
+  state:      { type: String, enum: ['ACCRUED','INITIATED','PAID'], default: 'ACCRUED' },
+  total:      Number,
+  payoutRef:  String,
+}, { timestamps: true });
+
+// models/settlementLine.js
+const schema2 = new mongoose.Schema({
+  settlement: { type: mongoose.Schema.Types.ObjectId, ref: 'Settlement', required: true, index: true },
+  booking:    { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true },
+  testAmount:    Number,
+  collectionFee: Number,
+  commission:    Number,
+  refunds:       Number,
+  payout:        Number,
+}, { timestamps: true });
+```
+
+`accrueLine` runs when booking reaches `COMPLETED`. `runSettlementCycle` rolls up the current cycle and flips state. Dispute = create row + freeze the line until resolved.
+
+**Checkpoint:** §7.9 closed. Commit.
+
+---
+
+## Task 44: Data export + consent center + i18n strings (§6.9, §8.1, §8.3)
+
+**Why (PRD §8.1 FR-5):** customer can request a complete export of their data; PRD §6.9 FR-5 consent center; PRD §8.3 Hindi+English.
+
+**Files:**
+- Create: `services/dataExportService.js` — produces a ZIP of all user data
+- Create: `models/dataExportJob.js`
+- Modify: `services/profileService.js` — `requestExport`, `withdrawConsent`
+- Add routes: `POST /api/me/exports`, `GET /api/me/exports/:id`, `POST /api/me/consents/withdraw`
+- Create: `services/i18nService.js` + AppContent rows `i18n_en` and `i18n_hi`
+
+```js
+// services/dataExportService.js
+import archiver from 'archiver';
+import { storage } from '../integrations/storage/storage.js';
+import DataExportJob from '../models/dataExportJob.js';
+
+export const requestExport = async ({ userId }) => {
+  const job = await DataExportJob.create({ user: userId, state: 'QUEUED' });
+  // Kick off async (run inside scheduler tick or worker).
+  return job;
+};
+
+export const runExport = async (job) => {
+  const [user, bookings, reports, invoices, refunds, notifications] = await Promise.all([
+    User.findById(job.user).select('-passwordHash -refreshToken'),
+    Booking.find({ user: job.user }),
+    Report.find({ booking: { $in: (await Booking.find({ user: job.user }).select('_id')).map((b) => b._id) } }),
+    Invoice.find({ user: job.user }),
+    Refund.find({ /* via transactions */ }),
+    Notification.find({ user: job.user }),
+  ]);
+  const buf = await renderZip({ user, bookings, reports, invoices, refunds, notifications });
+  const path = `exports/${job.user}/${job._id}.zip`;
+  await storage.uploadBuffer(buf, path, 'application/zip');
+  job.state = 'READY'; job.fileUri = path; await job.save();
+  return job;
+};
+
+const renderZip = (payload) => new Promise((resolve, reject) => {
+  const archive = archiver('zip');
+  const chunks = [];
+  archive.on('data', (c) => chunks.push(c));
+  archive.on('end', () => resolve(Buffer.concat(chunks)));
+  archive.on('error', reject);
+  archive.append(JSON.stringify(payload, null, 2), { name: 'labzy-data.json' });
+  archive.finalize();
+});
+```
+
+```js
+// services/i18nService.js
+import { getContent } from './contentService.js';
+const cache = new Map();
+export const t = async (lang, key, fallback) => {
+  if (!cache.has(lang)) cache.set(lang, await getContent(`i18n_${lang}`).catch(() => ({ payload: {} })));
+  return cache.get(lang).payload?.[key] || fallback || key;
+};
+```
+
+Add `Accept-Language` middleware that sets `request.lang` for any controller that wants to localise messages.
+
+**Checkpoint:** PRD §6.9, §8.1, §8.3 closed. Commit.
+
+---
+
+## Task 45: Partner notifications v2 — assistant visit reminder + owner daily digest (§7.7)
+
+**Why (PRD §7.7):** §7.7 FR-2 — assistants get "upcoming visit reminder (60 min before window)". §7.7 FR-3 — owner/manager configurable "daily morning summary + end-of-day recap".
+
+**Files:**
+- Create: `scheduler/jobs/assistantReminderJob.js`
+- Create: `scheduler/jobs/partnerDigestJob.js`
+- Modify: `models/user.js` — add `partnerDigestPreferences` for LAB_OWNER/LAB_MANAGER users
+- Register both intervals in `scheduler/index.js`
+
+- [ ] **Step 1: Assistant reminder job**
+
+```js
+// scheduler/jobs/assistantReminderJob.js
+import Booking from '../../models/booking.js';
+import LabAssistant from '../../models/labAssistant.js';
+import { notify } from '../../services/notificationService.js';
+
+const WINDOW_MS = 60 * 60 * 1000;     // 60-min ahead
+const TOLERANCE_MS = 10 * 60 * 1000;  // ±10 min so we don't double-fire
+
+export const runAssistantReminders = async ({ now = new Date(), log } = {}) => {
+  const from = new Date(now.getTime() + WINDOW_MS - TOLERANCE_MS);
+  const to   = new Date(now.getTime() + WINDOW_MS + TOLERANCE_MS);
+  // Match bookings whose slot.start time today falls in the [from,to] window.
+  const todays = await Booking.find({
+    status: { $in: ['ASSISTANT_ASSIGNED', 'CONFIRMED'] },
+    labAssistant: { $ne: null },
+    scheduledDate: {
+      $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+      $lt:  new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+    },
+  }).populate('labAssistant');
+  let sent = 0;
+  for (const b of todays) {
+    const [hh, mm] = b.slot.start.split(':').map(Number);
+    const slotMoment = new Date(b.scheduledDate);
+    slotMoment.setHours(hh, mm, 0, 0);
+    if (slotMoment < from || slotMoment > to) continue;
+    const assistant = await LabAssistant.findById(b.labAssistant).populate('user');
+    if (!assistant?.user) continue;
+    await notify({
+      userId: assistant.user._id,
+      event: 'ASSISTANT_VISIT_REMINDER',
+      title: `Visit at ${b.slot.start}`,
+      body: `Upcoming home collection — leave soon.`,
+      data: { bookingId: b._id.toString() },
+    });
+    sent += 1;
+  }
+  log?.info({ sent }, 'Assistant reminders sent');
+  return sent;
+};
+```
+
+- [ ] **Step 2: Partner digest job**
+
+```js
+// scheduler/jobs/partnerDigestJob.js
+import User from '../../models/user.js';
+import Lab from '../../models/lab.js';
+import Booking from '../../models/booking.js';
+import { notify } from '../../services/notificationService.js';
+
+export const runMorningDigest = async ({ now = new Date(), log } = {}) => {
+  const owners = await User.find({
+    roles: { $in: ['LAB_OWNER', 'LAB_MANAGER'] },
+    'partnerDigestPreferences.morning': true,
+  });
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  let sent = 0;
+  for (const owner of owners) {
+    const labs = await Lab.find({ owner: owner._id }).select('_id name');
+    for (const lab of labs) {
+      const [total, pending, expectedRevenue] = await Promise.all([
+        Booking.countDocuments({ lab: lab._id, scheduledDate: { $gte: today, $lt: tomorrow } }),
+        Booking.countDocuments({ lab: lab._id, status: 'PENDING' }),
+        Booking.aggregate([
+          { $match: { lab: lab._id, scheduledDate: { $gte: today, $lt: tomorrow } } },
+          { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        ]).then((r) => r[0]?.total || 0),
+      ]);
+      await notify({
+        userId: owner._id,
+        event: 'PARTNER_MORNING_DIGEST',
+        title: `${lab.name} — today's plan`,
+        body: `${total} bookings, ${pending} pending action, ₹${expectedRevenue} expected.`,
+        data: { labId: lab._id.toString() },
+      });
+      sent += 1;
+    }
+  }
+  log?.info({ sent }, 'Morning digest sent');
+  return sent;
+};
+
+export const runEveningDigest = async ({ now = new Date(), log } = {}) => {
+  const owners = await User.find({
+    roles: { $in: ['LAB_OWNER', 'LAB_MANAGER'] },
+    'partnerDigestPreferences.evening': true,
+  });
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  let sent = 0;
+  for (const owner of owners) {
+    const labs = await Lab.find({ owner: owner._id }).select('_id name');
+    for (const lab of labs) {
+      const [done, cancelled, revenue] = await Promise.all([
+        Booking.countDocuments({ lab: lab._id, status: 'COMPLETED', updatedAt: { $gte: today, $lt: tomorrow } }),
+        Booking.countDocuments({ lab: lab._id, status: 'CANCELLED', updatedAt: { $gte: today, $lt: tomorrow } }),
+        Booking.aggregate([
+          { $match: { lab: lab._id, status: 'COMPLETED', updatedAt: { $gte: today, $lt: tomorrow } } },
+          { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        ]).then((r) => r[0]?.total || 0),
+      ]);
+      await notify({
+        userId: owner._id,
+        event: 'PARTNER_EVENING_DIGEST',
+        title: `${lab.name} — day recap`,
+        body: `${done} completed, ${cancelled} cancelled, ₹${revenue} earned.`,
+        data: { labId: lab._id.toString() },
+      });
+      sent += 1;
+    }
+  }
+  log?.info({ sent }, 'Evening digest sent');
+  return sent;
+};
+```
+
+- [ ] **Step 3: User model preferences**
+
+```js
+// models/user.js — append:
+partnerDigestPreferences: {
+  morning: { type: Boolean, default: true },
+  evening: { type: Boolean, default: true },
+},
+```
+
+- [ ] **Step 4: Register in `scheduler/index.js`**
+
+```js
+import { runAssistantReminders } from './jobs/assistantReminderJob.js';
+import { runMorningDigest, runEveningDigest } from './jobs/partnerDigestJob.js';
+
+const TEN_MIN = 10 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
+
+setInterval(() => runAssistantReminders({ now: new Date(), log: app.log })
+  .catch((e) => app.log.error({ err: e }, 'assistantReminders failed')), TEN_MIN);
+
+// Cron-style: fire once per day at 7 AM and 9 PM local time. Use a 30-min tick
+// guarded by checking the current hour to avoid bringing in a cron lib.
+setInterval(() => {
+  const h = new Date().getHours();
+  if (h === 7)  runMorningDigest({ now: new Date(), log: app.log }).catch((e) => app.log.error({ err: e }, 'morningDigest failed'));
+  if (h === 21) runEveningDigest({ now: new Date(), log: app.log }).catch((e) => app.log.error({ err: e }, 'eveningDigest failed'));
+}, 30 * 60 * 1000);
+```
+
+**Checkpoint:** assistants get a 60-min reminder before each visit; owners/managers can opt in to morning + evening digests. Commit when ready.
+
+---
+
+## Phase 3 Self-Review
+
+- [ ] Customer can register and log in with email + password; signup blocks without TOS+Privacy+Health-records consent (§6.1 FR-2). (Auth-method override: email/password instead of OTP.)
+- [ ] Users < 18 cannot create a standalone customer account; they only exist as family members.
+- [ ] Lab owners can create LAB_MANAGER and LAB_ASSISTANT user accounts with email + password from `POST /api/partner/staff`; assistant creation requires a photo URL.
+- [ ] No user has more than 3 active sessions; logging into a 4th evicts the oldest.
+- [ ] `GET /api/me/recent-searches` returns the user's last 20 search interactions.
+- [ ] `GET /api/labs/:id` returns `ratingDistribution` plus `photos` and `description`.
+- [ ] Every state-changing booking endpoint writes a `BookingEvent` row.
+- [ ] Slot hold is 10 minutes (was 15).
+- [ ] Cannot reschedule a booking within the lab's `rescheduleCutoffHours`; cannot reschedule more than `maxReschedulesPerBooking` times.
+- [ ] PENDING bookings older than the lab's `responseSlaMinutes` are auto-cancelled by the scheduler with `cancelBy='SYSTEM'`.
+- [ ] Subscriptions in `APPROVE_EACH_TIME` mode create an `AWAITING_APPROVAL` occurrence and never auto-book.
+- [ ] Two consecutive payment failures on a subscription auto-pause it.
+- [ ] Sample-collection `COLLECTED` transition requires `visit-otp` verification on home bookings.
+- [ ] Lab can flag a sample issue → customer gets a free re-collection booking.
+- [ ] Multi-test bookings can carry partial reports; `COMPLETED` fires only when all tests have a report.
+- [ ] Replaced reports are flagged `isAccessible=false` and the customer is notified.
+- [ ] Every successful capture issues an `Invoice` PDF; duplicate captures auto-refund.
+- [ ] Promo code application is validated against `validFrom/Until`, `minOrder`, and per-user / total caps.
+- [ ] Non-critical notifications are suppressed during the user's quiet hours; critical notifications always deliver and fall back to SMS when push is disabled.
+- [ ] Reviews with profanity or PII are auto-rejected from public listings.
+- [ ] Help tickets in REFUND / REPORT_ISSUE / SAFETY / PAYMENT categories are auto-flagged HIGH priority.
+- [ ] Labs in `state='DRAFT'`, `'UNDER_REVIEW'`, `'PAUSED'`, or `'SUSPENDED'` are never returned to customer discovery.
+- [ ] Tests cannot be `PUBLISHED` without price + TAT + at least one mode available.
+- [ ] Each settlement line is traceable to a specific booking with a clear payout calculation.
+- [ ] A user can request a ZIP export of all their data and receive a download link when ready.
+- [ ] Home-collection bookings carry `homeCollectionFee` line item; fee is waived above the lab's threshold (PRD §6.4 FR-3).
+- [ ] Assistants receive a 60-min-before reminder for every assigned visit (PRD §7.7 FR-2).
+- [ ] Lab owners/managers receive opt-in morning + evening digests when enabled (PRD §7.7 FR-3).
+
+---
+
+## Phase 3 ordering notes
+
+- Task 23 unblocks 24 (Session model lives next to phone-OTP login).
+- Task 27 (state machine v2) must precede 30 (assistant flow) because the new transitions are referenced there.
+- Task 32 depends on 27 (per-test reports check booking status).
+- Task 33 must precede 34 (promo codes feed into invoice line items).
+- Task 38 must precede 39 (test publish guard relies on `lab.state === 'LIVE'` indirectly through discovery).
+- Tasks 40 + 41 round out the partner-side scope.
+- Tasks 42 + 43 are read-only analytics layered on top of everything earlier.
+- Task 44 is independent and can ship any time after the relevant models exist.
+- Task 45 depends on Task 30 (assistants must have `labAssistant.user` linked) and Task 35 (preferences gate the digests through `notify()`).
+- [ ] `docs/api-integration-for-frontend.md` is in sync with the Phase 2 surface.

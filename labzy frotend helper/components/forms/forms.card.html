@@ -1,0 +1,43 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Forms" subtitle="Input, SearchBar, Switch, SegmentedControl" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { background: var(--surface-page); padding: 16px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { Input, SearchBar, Switch, SegmentedControl } = window.LabzyDesignSystem_f16231;
+
+function Demo() {
+  const [mode, setMode] = React.useState('Home collection');
+  const [remind, setRemind] = React.useState(true);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <SearchBar onFilter={() => {}} />
+        <Input label="Phone number" icon="phone" placeholder="98765 43210" hint="We'll text your report link here" />
+        <Input label="Patient name" icon="user" error="Required to generate the report" />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <SegmentedControl options={['Home collection', 'Walk-in']} value={mode} onChange={setMode} />
+        <SegmentedControl options={['All', 'Ready', 'Pending']} value="All" onChange={() => {}} />
+        <Switch checked={remind} onChange={setRemind} label="Remind me to re-test" />
+        <Switch checked={false} onChange={() => {}} label="Share with my doctor" />
+        <Switch checked disabled label="SMS updates (required)" />
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

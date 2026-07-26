@@ -1,0 +1,20 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Corner radii" subtitle="Generous, friendly rounding — xs 6 → full pill" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 20px 16px; display: flex; gap: 16px; align-items: center; }
+  .r { width: 88px; height: 72px; background: var(--surface-brand-soft); border: 1.5px solid var(--teal-400); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; }
+  .n { font-size: 12px; font-weight: var(--weight-bold); color: var(--teal-700); }
+  .u { font-family: var(--font-mono); font-size: 9px; color: var(--teal-600); }
+</style>
+</head>
+<body>
+  <div class="r" style="border-radius: var(--radius-xs);"><span class="n">xs</span><span class="u">6 · badges</span></div>
+  <div class="r" style="border-radius: var(--radius-sm);"><span class="n">sm</span><span class="u">8 · tags</span></div>
+  <div class="r" style="border-radius: var(--radius-md);"><span class="n">md</span><span class="u">12 · buttons</span></div>
+  <div class="r" style="border-radius: var(--radius-lg);"><span class="n">lg</span><span class="u">16 · cards</span></div>
+  <div class="r" style="border-radius: var(--radius-xl);"><span class="n">xl</span><span class="u">24 · sheets</span></div>
+  <div class="r" style="border-radius: var(--radius-full); width: 110px;"><span class="n">full</span><span class="u">pills · FAB</span></div>
+</body>
+</html>

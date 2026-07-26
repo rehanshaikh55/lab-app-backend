@@ -11,7 +11,15 @@
       "Bash(npm start:*)",
       "Bash(node:*)",
       "Bash(cd:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(dir C:\\\\App\\\\app\\\\labzy-backend *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(Remove-Item *)",
+      "Bash(dir C:\\\\App\\\\app\\\\labzy-backend\\\\services *)",
+      "Bash(git -C /c/App/app/labzy-backend status --short)",
+      "Bash(git -C /c/App/app/labzy-backend diff --stat -- common/errors.js)",
+      "Bash(git -C /c/App/app/labzy-backend log --oneline -3)"
     ]
   }
 }

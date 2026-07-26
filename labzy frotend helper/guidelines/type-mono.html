@@ -1,0 +1,22 @@
+<!-- @dsCard group="Type" viewport="700x170" name="Mono — data face" subtitle="IBM Plex Mono · test values, reference ranges, booking IDs" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 18px 16px; }
+  .table { display: grid; grid-template-columns: 1fr auto auto; gap: 8px 24px; max-width: 520px; align-items: baseline; }
+  .h { font-size: 11px; font-weight: var(--weight-bold); letter-spacing: var(--tracking-overline); text-transform: uppercase; color: var(--text-muted); }
+  .name { font-size: 14px; font-weight: var(--weight-semibold); }
+  .val { font-family: var(--font-mono); font-size: 14px; font-weight: 600; text-align: right; }
+  .range { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); text-align: right; }
+</style>
+</head>
+<body>
+  <div class="table">
+    <span class="h">Parameter</span><span class="h" style="text-align:right;">Value</span><span class="h" style="text-align:right;">Range</span>
+    <span class="name">Hemoglobin</span><span class="val" style="color: var(--text-primary);">13.8 g/dL</span><span class="range">13.0–17.0</span>
+    <span class="name">Fasting glucose</span><span class="val" style="color: var(--danger-500);">118 mg/dL ↑</span><span class="range">70–100</span>
+    <span class="name">Booking ID</span><span class="val" style="color: var(--text-secondary);">LBZ-48291</span><span class="range"></span>
+  </div>
+</body>
+</html>
