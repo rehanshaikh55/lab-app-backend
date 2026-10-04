@@ -1,0 +1,76 @@
+/* ============================================
+   Labzy — Color tokens
+   Brand teal sampled from the Labzy wordmark;
+   charcoal from the "ZY" half of the logo.
+   ============================================ */
+
+:root {
+  /* ---- Brand teal scale ---- */
+  --teal-50:  #EAF6F4;
+  --teal-100: #D0ECE8;
+  --teal-200: #A2DAD2;
+  --teal-300: #6DC4B8;
+  --teal-400: #39AC9C;
+  --teal-500: #149584; /* Labzy brand teal — sampled from wordmark */
+  --teal-600: #107A6C;
+  --teal-700: #0C6055;
+  --teal-800: #09473F;
+  --teal-900: #06302B;
+
+  /* ---- Neutral (cool charcoal) scale ---- */
+  --neutral-0:   #FFFFFF;
+  --neutral-25:  #FAFBFB;
+  --neutral-50:  #F4F6F6;
+  --neutral-100: #E9EDED;
+  --neutral-200: #D8DEDE;
+  --neutral-300: #B9C2C2;
+  --neutral-400: #93A0A0;
+  --neutral-500: #6E7B7B;
+  --neutral-600: #535F5F;
+  --neutral-700: #414B4B;
+  --logo-charcoal: #454545; /* exact "ZY" gray from wordmark */
+  --neutral-800: #2E3535;
+  --neutral-900: #1C2121;
+
+  /* ---- Semantic accents ---- */
+  --info-500:    #2F6FD0;
+  --info-soft:   #EAF1FB;
+  --warning-500: #C77700;
+  --warning-soft:#FBF1E2;
+  --success-500: #1B9E4B;
+  --success-soft:#E9F6EE;
+  --danger-500:  #D23B36;
+  --danger-soft: #FBECEB;
+
+  /* ---- Semantic aliases: surfaces ---- */
+  --surface-page:       var(--neutral-25);
+  --surface-card:       var(--neutral-0);
+  --surface-sunken:     var(--neutral-50);
+  --surface-brand:      var(--teal-500);
+  --surface-brand-soft: var(--teal-50);
+  --surface-inverse:    var(--neutral-900);
+
+  /* ---- Semantic aliases: text ---- */
+  --text-primary:   var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --text-muted:     var(--neutral-400);
+  --text-brand:     var(--teal-600);
+  --text-on-brand:  #FFFFFF;
+
+  /* ---- Semantic aliases: borders ---- */
+  --border-default: var(--neutral-100);
+  --border-strong:  var(--neutral-200);
+  --border-brand:   var(--teal-300);
+
+  /* ---- Booking / report lifecycle status ---- */
+  --status-booked:          var(--info-500);
+  --status-booked-soft:     var(--info-soft);
+  --status-sampled:         #7C5CD6;
+  --status-sampled-soft:    #F1EDFB;
+  --status-processing:      var(--warning-500);
+  --status-processing-soft: var(--warning-soft);
+  --status-ready:           var(--success-500);
+  --status-ready-soft:      var(--success-soft);
+  --status-cancelled:       var(--danger-500);
+  --status-cancelled-soft:  var(--danger-soft);
+}

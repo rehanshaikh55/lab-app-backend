@@ -1,0 +1,39 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Surfaces & text in use" subtitle="Semantic aliases: page / card / sunken / brand-soft / inverse" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-page); padding: 16px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tile { border-radius: var(--radius-lg); padding: 14px; min-height: 110px; display: flex; flex-direction: column; gap: 4px; }
+  .t1 { font-size: 13px; font-weight: var(--weight-bold); }
+  .t2 { font-size: 11px; }
+  .tok { font-family: var(--font-mono); font-size: 9px; margin-top: auto; opacity: 0.7; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="tile" style="background: var(--surface-card); box-shadow: var(--shadow-card);">
+      <span class="t1" style="color: var(--text-primary);">Card on page</span>
+      <span class="t2" style="color: var(--text-secondary);">Secondary text</span>
+      <span class="t2" style="color: var(--text-muted);">Muted metadata</span>
+      <span class="tok" style="color: var(--text-muted);">--surface-card</span>
+    </div>
+    <div class="tile" style="background: var(--surface-sunken); border: 1px solid var(--border-default);">
+      <span class="t1" style="color: var(--text-primary);">Sunken well</span>
+      <span class="t2" style="color: var(--text-secondary);">Inputs, inset areas</span>
+      <span class="tok" style="color: var(--text-muted);">--surface-sunken</span>
+    </div>
+    <div class="tile" style="background: var(--surface-brand-soft); border: 1px solid var(--border-brand);">
+      <span class="t1" style="color: var(--teal-800);">Brand soft</span>
+      <span class="t2" style="color: var(--teal-700);">Highlights, promos</span>
+      <span class="tok" style="color: var(--teal-600);">--surface-brand-soft</span>
+    </div>
+    <div class="tile" style="background: var(--surface-inverse);">
+      <span class="t1" style="color: #fff;">Inverse</span>
+      <span class="t2" style="color: var(--neutral-300);">Toasts, dark chrome</span>
+      <span class="tok" style="color: var(--neutral-400);">--surface-inverse</span>
+    </div>
+  </div>
+</body>
+</html>

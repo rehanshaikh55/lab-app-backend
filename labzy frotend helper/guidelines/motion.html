@@ -1,0 +1,37 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Motion tokens" subtitle="Easing curves and durations — calm, ease-out, no bounce" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 18px 16px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .row { display: flex; flex-direction: column; gap: 6px; }
+  .bar { height: 10px; border-radius: 99px; background: var(--teal-500); transform-origin: left; }
+  .lbl { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+  .val { font-size: 10px; font-weight: 600; color: var(--text-secondary); }
+  @keyframes slide-fast   { from { width: 0; } to { width: 60px; } }
+  @keyframes slide-base   { from { width: 0; } to { width: 100px; } }
+  @keyframes slide-slow   { from { width: 0; } to { width: 140px; } }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="val">Fast · 120ms</span>
+    <div class="bar" style="animation: slide-fast 120ms var(--ease-out) infinite alternate; width: 60px;"></div>
+    <span class="lbl">--duration-fast · hover, press colors</span>
+  </div>
+  <div class="row">
+    <span class="val">Base · 200ms</span>
+    <div class="bar" style="animation: slide-base 200ms var(--ease-out) infinite alternate; width: 100px;"></div>
+    <span class="lbl">--duration-base · switch, selection</span>
+  </div>
+  <div class="row">
+    <span class="val">Slow · 320ms</span>
+    <div class="bar" style="animation: slide-slow 320ms var(--ease-inout) infinite alternate; width: 140px; background: var(--teal-700);"></div>
+    <span class="lbl">--duration-slow · timeline, status fills</span>
+  </div>
+  <div class="row">
+    <span class="val">No bounce · ease-out only</span>
+    <span class="lbl" style="font-size: 10px; color: var(--text-secondary);">cubic-bezier(0.2, 0.8, 0.3, 1) · healthcare = calm</span>
+  </div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutral scale" subtitle="Cool charcoal grays · --neutral-0 … --neutral-900" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 16px; }
+  .row { display: grid; grid-template-columns: repeat(11, 1fr); gap: 6px; }
+  .sw { display: flex; flex-direction: column; gap: 6px; }
+  .chip { height: 64px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.05); }
+  .lbl { font-size: 10px; font-weight: var(--weight-semibold); color: var(--text-secondary); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background: var(--neutral-0);"></div><span class="lbl">0</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-25);"></div><span class="lbl">25</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-50);"></div><span class="lbl">50</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-100);"></div><span class="lbl">100</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-200);"></div><span class="lbl">200</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-300);"></div><span class="lbl">300</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-400);"></div><span class="lbl">400</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-500);"></div><span class="lbl">500</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-600);"></div><span class="lbl">600</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-700);"></div><span class="lbl">700</span></div>
+    <div class="sw"><div class="chip" style="background: var(--neutral-900);"></div><span class="lbl">900</span></div>
+  </div>
+</body>
+</html>

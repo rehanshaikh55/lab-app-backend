@@ -1,14 +1,17 @@
 import mongoose from 'mongoose';
 
 const testSchema = new mongoose.Schema({
-  lab:                { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true },
-  name:               { type: String, required: true },
-  category:           { type: String, default: 'General' }, // e.g. 'Blood', 'Urine', 'Radiology', 'Cardiac'
-  description:        { type: String },
-  price:              { type: Number, required: true },
-  sampleRequirements: { type: String },
-  turnaroundHours:    { type: Number, default: 24 },
-  isActive:           { type: Boolean, default: true },
+  lab:                      { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true },
+  name:                     { type: String, required: true },
+  category:                 { type: String, default: 'General' }, // e.g. 'Blood', 'Urine', 'Radiology', 'Cardiac'
+  description:              { type: String },
+  plainLanguageDescription: { type: String },
+  price:                    { type: Number, required: true },
+  sampleRequirements:       { type: String },
+  turnaroundHours:          { type: Number, default: 24 },
+  fastingHours:             { type: Number, default: 0 },
+  sampleType:               { type: String, enum: ['Blood','Urine','Stool','Swab','Imaging','Other'], default: 'Blood' },
+  isActive:                 { type: Boolean, default: true },
 }, { timestamps: true });
 
 testSchema.index({ lab: 1, isActive: 1 });

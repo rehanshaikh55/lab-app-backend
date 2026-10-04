@@ -3,8 +3,11 @@ import { requireRoles } from '../middlewares/rbacMiddleware.js';
 import {
   getDailyBookings,
   getPartnerBookings,
+  getToday,
   acceptBooking,
   rejectBooking,
+  markCollected,
+  markProcessing,
   reassignAssistant,
   uploadReport,
   linkReport,
@@ -16,20 +19,22 @@ import {
   getRevenueAnalytics,
   getSlotsAnalytics,
   getCustomerHistory,
+  getTatBoard,
 } from '../controllers/partnerController.js';
 
 export const partnerRoutes = async (fastify) => {
   const ownerAuth = { preHandler: [verifyJWT, requireRoles('LAB_OWNER')] };
 
-  // Bookings
-  fastify.get('/partner/bookings/daily', { ...ownerAuth }, getDailyBookings);
+  fastify.get('/partner/today',           ownerAuth, getToday);
+  fastify.get('/partner/bookings/daily',  ownerAuth, getDailyBookings);
+
   fastify.get('/partner/bookings', {
     ...ownerAuth,
     schema: {
       querystring: {
         type: 'object',
         properties: {
-          status: { type: 'string', enum: ['PENDING', 'CONFIRMED', 'COLLECTED', 'COMPLETED', 'CANCELLED'] },
+          status: { type: 'string', enum: ['PENDING', 'CONFIRMED', 'COLLECTED', 'PROCESSING', 'COMPLETED', 'CANCELLED'] },
           page:   { type: 'integer', default: 1 },
           limit:  { type: 'integer', default: 20 },
         },
@@ -39,9 +44,7 @@ export const partnerRoutes = async (fastify) => {
 
   fastify.post('/partner/bookings/:id/accept', {
     ...ownerAuth,
-    schema: {
-      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
-    },
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, acceptBooking);
 
   fastify.post('/partner/bookings/:id/reject', {
@@ -56,6 +59,16 @@ export const partnerRoutes = async (fastify) => {
     },
   }, rejectBooking);
 
+  fastify.post('/partner/bookings/:id/mark-collected', {
+    ...ownerAuth,
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
+  }, markCollected);
+
+  fastify.post('/partner/bookings/:id/mark-processing', {
+    ...ownerAuth,
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
+  }, markProcessing);
+
   fastify.post('/partner/bookings/:id/reassign', {
     ...ownerAuth,
     schema: {
@@ -69,8 +82,7 @@ export const partnerRoutes = async (fastify) => {
     },
   }, reassignAssistant);
 
-  // Reports
-  fastify.post('/partner/reports/upload', { ...ownerAuth }, uploadReport);
+  fastify.post('/partner/reports/upload', ownerAuth, uploadReport);
 
   fastify.post('/partner/bookings/:id/report', {
     ...ownerAuth,
@@ -80,17 +92,32 @@ export const partnerRoutes = async (fastify) => {
         type: 'object',
         required: ['uri', 'checksum'],
         properties: {
-          uri:      { type: 'string' },
-          checksum: { type: 'string' },
-          testId:   { type: 'string' },
+          uri:        { type: 'string' },
+          checksum:   { type: 'string' },
+          testId:     { type: 'string' },
+          parameters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name', 'value'],
+              properties: {
+                name:    { type: 'string' },
+                value:   { type: 'string' },
+                unit:    { type: 'string' },
+                refLow:  { type: 'number' },
+                refHigh: { type: 'number' },
+                flag:    { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH'] },
+              },
+              additionalProperties: false,
+            },
+          },
         },
         additionalProperties: false,
       },
     },
   }, linkReport);
 
-  // Assistants
-  fastify.get('/partner/assistants', { ...ownerAuth }, listAssistants);
+  fastify.get('/partner/assistants', ownerAuth, listAssistants);
 
   fastify.post('/partner/assistants', {
     ...ownerAuth,
@@ -110,20 +137,15 @@ export const partnerRoutes = async (fastify) => {
 
   fastify.put('/partner/assistants/:id', {
     ...ownerAuth,
-    schema: {
-      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
-    },
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, updateAssistant);
 
   fastify.put('/partner/assistants/:id/availability', {
     ...ownerAuth,
-    schema: {
-      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
-    },
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, setAssistantAvailability);
 
-  // Analytics
-  fastify.get('/partner/analytics/overview', { ...ownerAuth }, getAnalyticsOverview);
+  fastify.get('/partner/analytics/overview', ownerAuth, getAnalyticsOverview);
 
   fastify.get('/partner/analytics/revenue', {
     ...ownerAuth,
@@ -138,12 +160,12 @@ export const partnerRoutes = async (fastify) => {
     },
   }, getRevenueAnalytics);
 
-  fastify.get('/partner/analytics/slots', { ...ownerAuth }, getSlotsAnalytics);
+  fastify.get('/partner/analytics/slots', ownerAuth, getSlotsAnalytics);
 
   fastify.get('/partner/customers/:customerId/history', {
     ...ownerAuth,
-    schema: {
-      params: { type: 'object', required: ['customerId'], properties: { customerId: { type: 'string' } } },
-    },
+    schema: { params: { type: 'object', required: ['customerId'], properties: { customerId: { type: 'string' } } } },
   }, getCustomerHistory);
+
+  fastify.get('/partner/tat-board', ownerAuth, getTatBoard);
 };

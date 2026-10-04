@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x130" name="Booking lifecycle status" subtitle="One hue per stage of the test journey — used in pills, timelines, report rows" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 20px 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: var(--weight-bold); }
+  .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+  .arrow { color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="pill" style="background: var(--status-booked-soft); color: var(--status-booked);"><span class="dot"></span>Booked</span>
+    <span class="arrow">→</span>
+    <span class="pill" style="background: var(--status-sampled-soft); color: var(--status-sampled);"><span class="dot"></span>Sample collected</span>
+    <span class="arrow">→</span>
+    <span class="pill" style="background: var(--status-processing-soft); color: var(--status-processing);"><span class="dot"></span>Processing</span>
+    <span class="arrow">→</span>
+    <span class="pill" style="background: var(--status-ready-soft); color: var(--status-ready);"><span class="dot"></span>Report ready</span>
+    <span class="pill" style="background: var(--status-cancelled-soft); color: var(--status-cancelled); margin-left: 10px;"><span class="dot"></span>Cancelled</span>
+  </div>
+</body>
+</html>

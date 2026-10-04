@@ -11,9 +11,16 @@ const addressSchema = new mongoose.Schema({
   coordinates: { type: [Number] }, // [lng, lat]
 }, { _id: true });
 
+const dependentSchema = new mongoose.Schema({
+  name:      { type: String, required: true },
+  relation:  { type: String, enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'other'], default: 'other' },
+  gender:    { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
+  birthDate: { type: Date },
+}, { _id: true, timestamps: true });
+
 const userSchema = new mongoose.Schema({
   name:         { type: String, required: true },
-  email:        { type: String, unique: true, lowercase: true, trim: true },
+  email:        { type: String, unique: true, lowercase: true, trim: true, sparse: true },
   phone:        { type: String },
   passwordHash: { type: String },
   roles: {
@@ -21,14 +28,15 @@ const userSchema = new mongoose.Schema({
     enum: ['CUSTOMER', 'LAB_OWNER', 'LAB_ASSISTANT', 'ADMIN'],
     default: ['CUSTOMER'],
   },
-  addresses: [addressSchema],
+  addresses:  [addressSchema],
+  dependents: [dependentSchema],
   location: {
     type:        { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
   },
-  refreshToken:     { type: String },   // stored hashed
   fcmToken:         { type: String },
   isVerified:       { type: Boolean, default: false },
+  emailVerifiedAt:  { type: Date, default: null },
   resetToken:       { type: String },
   resetTokenExpiry: { type: Date },
   picture:          { type: String },
@@ -36,9 +44,11 @@ const userSchema = new mongoose.Schema({
   birthDate:        { type: Date },
   profileCompleted: { type: Boolean, default: false },
   lastLoginAt:      { type: Date },
+  // Task 24: 30-day account-deletion grace period. Set by requestAccountDeletion,
+  // cleared by cancelAccountDeletion, consumed (and reset to null) by accountDeletionJob.
+  deletionScheduledAt: { type: Date, default: null, index: true },
 }, { timestamps: true });
 
 userSchema.index({ location: '2dsphere' });
-userSchema.index({ email: 1 });
 
 export default mongoose.model('User', userSchema);

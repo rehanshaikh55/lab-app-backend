@@ -1,0 +1,28 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Brand teal scale" subtitle="--teal-50 … --teal-900 · 500 sampled from the wordmark" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 16px; }
+  .row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  .sw { display: flex; flex-direction: column; gap: 6px; }
+  .chip { height: 64px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.04); }
+  .lbl { font-size: 10px; font-weight: var(--weight-semibold); color: var(--text-secondary); }
+  .hex { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background: var(--teal-50);"></div><span class="lbl">50</span><span class="hex">#EAF6F4</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-100);"></div><span class="lbl">100</span><span class="hex">#D0ECE8</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-200);"></div><span class="lbl">200</span><span class="hex">#A2DAD2</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-300);"></div><span class="lbl">300</span><span class="hex">#6DC4B8</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-400);"></div><span class="lbl">400</span><span class="hex">#39AC9C</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-500); box-shadow: var(--focus-ring);"></div><span class="lbl">500 ★</span><span class="hex">#149584</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-600);"></div><span class="lbl">600</span><span class="hex">#107A6C</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-700);"></div><span class="lbl">700</span><span class="hex">#0C6055</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-800);"></div><span class="lbl">800</span><span class="hex">#09473F</span></div>
+    <div class="sw"><div class="chip" style="background: var(--teal-900);"></div><span class="lbl">900</span><span class="hex">#06302B</span></div>
+  </div>
+</body>
+</html>

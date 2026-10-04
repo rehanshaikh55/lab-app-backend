@@ -1,0 +1,33 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Semantic accents" subtitle="Info / warning / success / danger — each with a soft tint" -->
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { background: var(--surface-card); padding: 16px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .pair { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-default); }
+  .solid { height: 52px; display: flex; align-items: center; padding: 0 12px; color: #fff; font-size: 12px; font-weight: var(--weight-bold); }
+  .soft { height: 40px; display: flex; align-items: center; padding: 0 12px; font-size: 11px; font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="pair">
+      <div class="solid" style="background: var(--info-500);">Info</div>
+      <div class="soft" style="background: var(--info-soft); color: var(--info-500);">--info-soft</div>
+    </div>
+    <div class="pair">
+      <div class="solid" style="background: var(--warning-500);">Warning</div>
+      <div class="soft" style="background: var(--warning-soft); color: var(--warning-500);">--warning-soft</div>
+    </div>
+    <div class="pair">
+      <div class="solid" style="background: var(--success-500);">Success</div>
+      <div class="soft" style="background: var(--success-soft); color: var(--success-500);">--success-soft</div>
+    </div>
+    <div class="pair">
+      <div class="solid" style="background: var(--danger-500);">Danger</div>
+      <div class="soft" style="background: var(--danger-soft); color: var(--danger-500);">--danger-soft</div>
+    </div>
+  </div>
+</body>
+</html>
