@@ -17,6 +17,8 @@ import {
   watchLabsNearby,
 } from '../controllers/profileController.js';
 
+const NAME_SCHEMA = { type: 'string', minLength: 2, maxLength: 100, pattern: "^[A-Za-z][A-Za-z '\\-]{1,99}$" };
+
 export const profileRoutes = async (fastify) => {
   const auth = { preHandler: [verifyJWT] };
 
@@ -28,11 +30,16 @@ export const profileRoutes = async (fastify) => {
       body: {
         type: 'object',
         properties: {
-          name:      { type: 'string' },
+          name:      NAME_SCHEMA,
           phone:     { type: 'string' },
           fcmToken:  { type: 'string' },
           gender:    { type: 'string', enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
           birthDate: { type: 'string' },
+          age:       { type: 'integer', minimum: 1, maximum: 120 },
+          weight:    { type: 'number', minimum: 20, maximum: 200 },
+          height:    { type: 'number', minimum: 100, maximum: 250 },
+          bloodGroup: { type: 'string', enum: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'unknown'] },
+          registrationStep: { type: 'integer', enum: [1, 2] },
         },
         additionalProperties: false,
       },
@@ -109,10 +116,11 @@ export const profileRoutes = async (fastify) => {
         type: 'object',
         required: ['name'],
         properties: {
-          name:      { type: 'string', minLength: 1 },
-          relation:  { type: 'string', enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'other'] },
+          name:      NAME_SCHEMA,
+          relation:  { type: 'string', enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'child', 'parent', 'other'] },
           gender:    { type: 'string', enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
           birthDate: { type: 'string' },
+          age:       { type: 'integer', minimum: 0, maximum: 120 },
         },
         additionalProperties: false,
       },
@@ -126,10 +134,11 @@ export const profileRoutes = async (fastify) => {
       body: {
         type: 'object',
         properties: {
-          name:      { type: 'string', minLength: 1 },
-          relation:  { type: 'string', enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'other'] },
+          name:      NAME_SCHEMA,
+          relation:  { type: 'string', enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'child', 'parent', 'other'] },
           gender:    { type: 'string', enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
           birthDate: { type: 'string' },
+          age:       { type: 'integer', minimum: 0, maximum: 120 },
         },
         additionalProperties: false,
       },

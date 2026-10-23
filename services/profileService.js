@@ -13,12 +13,28 @@ export const getProfile = async (userId) => {
   return user;
 };
 
+// birthDate = today minus `age` years (same month/day).
+const birthDateFromAge = (age) => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - age);
+  return d;
+};
+
 export const updateProfile = async ({ userId, body }) => {
   const update = {};
   for (const k of ['name', 'phone', 'fcmToken', 'gender']) {
     if (body[k] !== undefined) update[k] = body[k];
   }
+  for (const k of ['weight', 'height', 'bloodGroup']) {
+    if (body[k] !== undefined) update[k] = body[k];
+  }
   if (body.birthDate !== undefined) update.birthDate = new Date(body.birthDate);
+  if (body.age !== undefined) update.birthDate = birthDateFromAge(body.age);
+  if (body.registrationStep !== undefined) {
+    // Only ever increases: keep the stored value when the request is lower.
+    const current = await User.findById(userId).select('registrationStep');
+    update.registrationStep = Math.max(current?.registrationStep ?? 0, body.registrationStep);
+  }
   return User.findByIdAndUpdate(userId, update, { new: true }).select(SAFE_SELECT);
 };
 
@@ -88,7 +104,8 @@ export const addDependent = async ({ userId, body }) => {
   const user = await User.findById(userId);
   if (!user) throw Errors.NOT_FOUND('User');
   const { name, relation, gender, birthDate } = body;
-  user.dependents.push({ name, relation, gender, birthDate: birthDate ? new Date(birthDate) : undefined });
+  const bd = body.age !== undefined ? birthDateFromAge(body.age) : (birthDate ? new Date(birthDate) : undefined);
+  user.dependents.push({ name, relation, gender, birthDate: bd });
   await user.save();
   return user.dependents;
 };
@@ -102,6 +119,7 @@ export const updateDependent = async ({ userId, dependentId, body }) => {
     if (body[k] !== undefined) dep[k] = body[k];
   }
   if (body.birthDate !== undefined) dep.birthDate = body.birthDate ? new Date(body.birthDate) : undefined;
+  if (body.age !== undefined) dep.birthDate = birthDateFromAge(body.age);
   await user.save();
   return user.dependents;
 };

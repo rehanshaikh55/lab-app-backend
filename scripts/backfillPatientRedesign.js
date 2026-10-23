@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import Test from '../models/test.js';
+import User from '../models/user.js';
 import Coupon from '../models/coupon.js';
 import { toCatalogCode } from '../services/_shared/catalogCode.js';
 
@@ -43,10 +44,20 @@ export async function seedCoupons() {
   );
 }
 
+// Existing users predate the registration flow: mark them fully registered.
+export async function backfillRegistrationStep() {
+  const res = await User.collection.updateMany(
+    { registrationStep: { $exists: false } },
+    { $set: { registrationStep: 2 } },
+  );
+  return res.modifiedCount;
+}
+
 async function main() {
   await mongoose.connect(process.env.MONGO_URI);
   try {
     const counts = { catalog: await backfillCatalog() };
+    counts.registrationStep = await backfillRegistrationStep();
     await seedCoupons();
     console.log('Backfill complete:', JSON.stringify(counts));
   } finally {

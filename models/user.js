@@ -13,7 +13,7 @@ const addressSchema = new mongoose.Schema({
 
 const dependentSchema = new mongoose.Schema({
   name:      { type: String, required: true },
-  relation:  { type: String, enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'other'], default: 'other' },
+  relation:  { type: String, enum: ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'sibling', 'child', 'parent', 'other'], default: 'other' },
   gender:    { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
   birthDate: { type: Date },
 }, { _id: true, timestamps: true });
@@ -42,6 +42,10 @@ const userSchema = new mongoose.Schema({
   picture:          { type: String },
   gender:           { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
   birthDate:        { type: Date },
+  weight:           { type: Number },
+  height:           { type: Number },
+  bloodGroup:       { type: String, enum: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'unknown'] },
+  registrationStep: { type: Number, enum: [0, 1, 2], default: 0 },
   profileCompleted: { type: Boolean, default: false },
   lastLoginAt:      { type: Date },
   // Task 24: 30-day account-deletion grace period. Set by requestAccountDeletion,
