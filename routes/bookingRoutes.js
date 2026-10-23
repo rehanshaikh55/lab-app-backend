@@ -9,6 +9,7 @@ import {
   getBookingReport,
   getBookingEvents,
   setVisitNotes,
+  changePaymentMethod,
   getVisitOtp,
   connectCall,
 } from '../controllers/bookingController.js';
@@ -130,6 +131,19 @@ export const bookingRoutes = async (fastify) => {
       },
     },
   }, setVisitNotes);
+
+  fastify.patch('/bookings/:id/payment-method', {
+    ...customerAuth,
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+      body: {
+        type: 'object',
+        required: ['paymentMethod'],
+        properties: { paymentMethod: { type: 'string', enum: ['PAY_AT_LAB'] } },
+        additionalProperties: false,
+      },
+    },
+  }, changePaymentMethod);
 
   fastify.get('/bookings/:id/visit-otp', {
     ...customerAuth,

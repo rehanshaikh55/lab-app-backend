@@ -257,6 +257,22 @@ export const setVisitNotes = async ({ userId, bookingId, notes }) => {
   return withTimeline(booking);
 };
 
+export const changePaymentMethod = async ({ userId, bookingId, paymentMethod }) => {
+  const booking = await Booking.findById(bookingId);
+  if (!booking || booking.user.toString() !== userId.toString()) {
+    throw Errors.BOOKING_NOT_FOUND(`/bookings/${bookingId}/payment-method`);
+  }
+  const updated = await Booking.findOneAndUpdate(
+    { _id: bookingId, status: 'PENDING', paymentMethod: 'ONLINE' },
+    { $set: { paymentMethod } },
+    { new: true },
+  );
+  if (!updated) {
+    throw Errors.INVALID_BOOKING_TRANSITION('This booking can no longer change its payment method.');
+  }
+  return withTimeline(updated);
+};
+
 export const getVisitOtp = async ({ userId, bookingId }) => {
   const booking = await Booking.findById(bookingId);
   if (!booking || booking.user.toString() !== userId.toString()) {

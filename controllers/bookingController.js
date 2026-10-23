@@ -81,6 +81,13 @@ export const setVisitNotes = asyncHandler(async (request, reply) => {
   return reply.code(200).send({ booking });
 });
 
+export const changePaymentMethod = asyncHandler(async (request, reply) => {
+  const booking = await bookingService.changePaymentMethod({
+    userId: request.user._id, bookingId: request.params.id, paymentMethod: request.body.paymentMethod,
+  });
+  return reply.code(200).send({ booking });
+});
+
 export const getVisitOtp = asyncHandler(async (request, reply) => {
   const result = await bookingService.getVisitOtp({ userId: request.user._id, bookingId: request.params.id });
   return reply.code(200).send(result);

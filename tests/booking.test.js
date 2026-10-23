@@ -239,3 +239,51 @@ test('GET /bookings returns richer payloads with catalog fields and lab photos',
   // Verify lab.photos is an array
   assert.ok(Array.isArray(bookings[0].lab.photos), 'lab.photos should be an array');
 });
+
+// ---- PATCH /bookings/:id/payment-method ----
+const makeBooking = async (start, extra = {}) => {
+  const payload = { labId: lab._id.toString(), testIds:[testDoc._id.toString()], scheduledDate: futureThursday, slot:{ start }, collectionType:'IN_LAB', ...extra };
+  const res = await app.inject({ method:'POST', url:'/api/bookings', headers:{ authorization:`Bearer ${token}` }, payload });
+  assert.equal(res.statusCode, 201);
+  return res.json().booking;
+};
+const patchPm = (id, tok = token, payload = { paymentMethod: 'PAY_AT_LAB' }) =>
+  app.inject({ method:'PATCH', url:`/api/bookings/${id}/payment-method`, headers:{ authorization:`Bearer ${tok}` }, payload });
+
+test('PATCH payment-method switches a PENDING ONLINE booking to PAY_AT_LAB, keeping totals and slot', async () => {
+  const b = await makeBooking('10:00');
+  assert.equal(b.paymentMethod, 'ONLINE');
+  const res = await patchPm(b._id);
+  assert.equal(res.statusCode, 200);
+  const out = res.json().booking;
+  assert.equal(out.paymentMethod, 'PAY_AT_LAB');
+  assert.equal(out.status, 'PENDING');
+  assert.equal(out.totalAmount, b.totalAmount);
+  assert.deepEqual(out.slot, b.slot);
+  assert.ok(Array.isArray(out.timeline));
+});
+
+test('PATCH payment-method by another user returns 404', async () => {
+  const b = await makeBooking('11:00');
+  await User.create({ name:'Other', email:'c2@x.com', roles:['CUSTOMER'], passwordHash: await bcrypt.hash('pass123',12) });
+  const login = await app.inject({ method:'POST', url:'/api/auth/login', payload:{ email:'c2@x.com', password:'pass123' } });
+  const res = await patchPm(b._id, login.json().accessToken);
+  assert.equal(res.statusCode, 404);
+});
+
+test('PATCH payment-method on a non-PENDING booking is rejected', async () => {
+  const b = await makeBooking('12:00');
+  const Booking = (await import('../models/booking.js')).default;
+  await Booking.findByIdAndUpdate(b._id, { status: 'CONFIRMED' });
+  const res = await patchPm(b._id);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.json().type, 'https://labzy.in/errors/INVALID_BOOKING_TRANSITION');
+  assert.match(res.json().detail, /can no longer change its payment method/);
+});
+
+test('PATCH payment-method on an already PAY_AT_LAB booking is rejected', async () => {
+  const b = await makeBooking('13:00', { paymentMethod: 'PAY_AT_LAB' });
+  const res = await patchPm(b._id);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.json().type, 'https://labzy.in/errors/INVALID_BOOKING_TRANSITION');
+});
