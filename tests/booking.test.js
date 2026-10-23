@@ -221,3 +221,21 @@ test('invalid transition still throws INVALID_BOOKING_TRANSITION (confirm an alr
   const events = await BookingEvent.find({ booking: id });
   assert.equal(events.length, 0);
 });
+
+test('GET /bookings returns richer payloads with catalog fields and lab photos', async () => {
+  const payload = { labId: lab._id.toString(), testIds:[testDoc._id.toString()], scheduledDate: futureThursday, slot:{ start:'11:00' }, collectionType:'IN_LAB' };
+  const created = await app.inject({ method:'POST', url:'/api/bookings', headers:{ authorization:`Bearer ${token}` }, payload });
+  assert.equal(created.statusCode, 201);
+
+  const res = await app.inject({ method:'GET', url:'/api/bookings', headers:{ authorization:`Bearer ${token}` } });
+  assert.equal(res.statusCode, 200);
+  const { bookings } = res.json();
+  assert.equal(bookings.length, 1);
+
+  // Verify test fields are populated
+  assert.ok(bookings[0].tests[0].catalogCode !== undefined, 'catalogCode should be defined');
+  assert.ok(bookings[0].tests[0].turnaroundHours !== undefined, 'turnaroundHours should be defined');
+
+  // Verify lab.photos is an array
+  assert.ok(Array.isArray(bookings[0].lab.photos), 'lab.photos should be an array');
+});

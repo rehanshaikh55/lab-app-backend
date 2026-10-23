@@ -134,8 +134,8 @@ export const listBookings = async ({ userId, status, page = 1, limit = 20 }) => 
   const skip = (parseInt(page) - 1) * parseInt(limit);
   const [bookings, total] = await Promise.all([
     Booking.find(query)
-      .populate('lab', 'name address phone')
-      .populate('tests', 'name price')
+      .populate('lab', 'name address phone photos rating offerText')
+      .populate('tests', 'name price mrp turnaroundHours fastingHours catalogCode homeCollection')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit)),
@@ -151,8 +151,8 @@ export const listBookings = async ({ userId, status, page = 1, limit = 20 }) => 
 
 export const getBookingForUser = async ({ userId, bookingId }) => {
   const booking = await Booking.findById(bookingId)
-    .populate('lab', 'name address phone')
-    .populate('tests', 'name price sampleRequirements')
+    .populate('lab', 'name address phone photos rating offerText')
+    .populate('tests', 'name price mrp turnaroundHours fastingHours catalogCode homeCollection sampleRequirements')
     .populate('reports.report')
     .populate('labAssistant', 'name phone');
   if (!booking || booking.user.toString() !== userId.toString()) {
