@@ -11,6 +11,7 @@ import { packageRoutes } from "./packageRoutes.js";
 import { paymentRoutes } from "./paymentRoutes.js";
 import { contentRoutes } from "./contentRoutes.js";
 import { ticketRoutes } from "./ticketRoutes.js";
+import { catalogRoutes } from "./catalogRoutes.js";
 import { wsRoutes } from "./wsRoutes.js";
 
 const prefix = "/api";
@@ -29,6 +30,7 @@ export const registerRoutes = async (fastify) => {
   fastify.register(paymentRoutes,      { prefix });
   fastify.register(contentRoutes,      { prefix });
   fastify.register(ticketRoutes,       { prefix });
+  fastify.register(catalogRoutes,      { prefix });
   // wsRoutes intentionally registered at the root (no /api prefix)
   fastify.register(wsRoutes);
 };

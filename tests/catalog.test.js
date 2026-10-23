@@ -6,6 +6,7 @@ import Lab from '../models/lab.js';
 import Test from '../models/test.js';
 import { toCatalogCode } from '../services/_shared/catalogCode.js';
 import { backfillCatalog } from '../scripts/backfillPatientRedesign.js';
+import bcrypt from 'bcryptjs';
 
 let app, lab, owner;
 
@@ -63,4 +64,100 @@ test('backfillCatalog fills missing catalogCode/mrp and is idempotent', async ()
   const second = await backfillCatalog();
   assert.equal(second.catalogCode, 0);
   assert.equal(second.mrp, 0);
+});
+
+// ---- GET /api/catalog/tests ----
+const seedCatalog = async () => {
+  const labB = await Lab.create({
+    owner: owner._id, name: 'Lab B',
+    location: { type: 'Point', coordinates: [77.6, 13.5] }, // ~70 km from Lab A
+    openingHours: openAllWeek, isActive: true, isVerified: true,
+  });
+  const inactive = await Lab.create({
+    owner: owner._id, name: 'Lab Off',
+    location: { type: 'Point', coordinates: [77.5, 12.9] },
+    openingHours: openAllWeek, isActive: false,
+  });
+  await Test.create([
+    { lab: lab._id, name: 'Complete Blood Count (CBC)', price: 299, mrp: 450, turnaroundHours: 6 },
+    { lab: lab._id, name: 'Lipid Profile', price: 549, fastingHours: 12 },
+    { lab: labB._id, name: 'Complete Blood Count (CBC)', price: 349, turnaroundHours: 4 },
+    { lab: inactive._id, name: 'Complete Blood Count (CBC)', price: 99, turnaroundHours: 1 },
+  ]);
+};
+
+const catalogToken = async () => {
+  if (!(await User.exists({ email: 'cust@x.com' }))) await User.create({
+    name: 'Cust', email: 'cust@x.com', roles: ['CUSTOMER'],
+    passwordHash: await bcrypt.hash('pass123', 12),
+  });
+  const login = await app.inject({
+    method: 'POST', url: '/api/auth/login',
+    payload: { email: 'cust@x.com', password: 'pass123' },
+  });
+  return login.json().accessToken;
+};
+
+const getCatalog = async (qs = '') => {
+  const token = await catalogToken();
+  const res = await app.inject({
+    method: 'GET', url: `/api/catalog/tests${qs}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  return res;
+};
+
+test('GET /catalog/tests groups by code across active labs', async () => {
+  await seedCatalog();
+  const res = await getCatalog();
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.items.length, 2);
+  assert.equal(body.total, 2);
+  const cbc = body.items.find((i) => i.code === 'complete-blood-count-cbc');
+  assert.equal(cbc.price, 299);
+  assert.equal(cbc.mrp, 450);
+  assert.equal(cbc.turnaroundHours, 4);
+  assert.equal(cbc.labCount, 2);
+});
+
+test('GET /catalog/tests requires auth', async () => {
+  const res = await app.inject({ method: 'GET', url: '/api/catalog/tests' });
+  assert.equal(res.statusCode, 401);
+});
+
+test('GET /catalog/tests?noFasting=true excludes fasting tests', async () => {
+  await seedCatalog();
+  const body = (await getCatalog('?noFasting=true')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['complete-blood-count-cbc']);
+});
+
+test('GET /catalog/tests?maxPrice=300 returns only CBC', async () => {
+  await seedCatalog();
+  const body = (await getCatalog('?maxPrice=300')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['complete-blood-count-cbc']);
+});
+
+test('GET /catalog/tests?sort=low orders by price ascending', async () => {
+  await seedCatalog();
+  const body = (await getCatalog('?sort=low')).json();
+  assert.deepEqual(body.items.map((i) => i.price), [299, 549]);
+  const high = (await getCatalog('?sort=high')).json();
+  assert.deepEqual(high.items.map((i) => i.price), [549, 299]);
+});
+
+test('GET /catalog/tests?q=blood matches CBC by name', async () => {
+  await seedCatalog();
+  const body = (await getCatalog('?q=blood')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['complete-blood-count-cbc']);
+});
+
+test('GET /catalog/tests with lat/lng/radius excludes far labs', async () => {
+  await seedCatalog();
+  const body = (await getCatalog('?lat=12.9&lng=77.5&radius=1000')).json();
+  const cbc = body.items.find((i) => i.code === 'complete-blood-count-cbc');
+  assert.equal(body.items.length, 2);
+  assert.equal(cbc.labCount, 1);
+  assert.equal(cbc.price, 299);
+  assert.equal(cbc.turnaroundHours, 6);
 });
