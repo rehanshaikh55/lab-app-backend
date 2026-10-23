@@ -13,7 +13,7 @@ const patientOf = (booking) => ({
 const matchesPatient = (booking, patient) => {
   const depId = booking.patient?.dependentId ? String(booking.patient.dependentId) : null;
   if (patient === 'all') return true;
-  if (patient === 'self') return !depId;
+  if (patient === 'self') return !depId || booking.patient?.isSelf === true;
   return depId === patient;
 };
 
@@ -25,7 +25,7 @@ const base = (booking, patient) => ({
 });
 
 export const listMyReports = async ({ userId, patient = 'all' }) => {
-  const bookings = (await Booking.find({ user: userId })
+  const bookings = (await Booking.find({ user: userId, status: { $ne: 'CANCELLED' } })
     .populate('lab', 'name')
     .populate('tests', 'name catalogCode turnaroundHours')
     .lean())
@@ -45,7 +45,7 @@ export const listMyReports = async ({ userId, patient = 'all' }) => {
     if (!doneTests.has(String(booking._id))) doneTests.set(String(booking._id), new Set());
     if (r.test) doneTests.get(String(booking._id)).add(String(r.test));
     rows.push({
-      sortAt: r.issuedAt,
+      sortAt: r.issuedAt ?? booking.scheduledDate,
       row: {
         _id: String(r._id),
         ...base(booking, patientOf(booking)),

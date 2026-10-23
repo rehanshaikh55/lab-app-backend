@@ -127,3 +127,32 @@ test('requires auth', async () => {
   const res = await app.inject({ method: 'GET', url: '/api/me/reports' });
   assert.equal(res.statusCode, 401);
 });
+
+test('cancelled booking with an accessible report is excluded', async () => {
+  const b = await mkBooking({ status: 'CANCELLED' });
+  await mkReport(b, testA, { issuedAt: new Date('2026-09-03') });
+  const rows = (await get()).json().reports;
+  assert.equal(rows.length, 0);
+});
+
+test('booking with two tests and one report yields one READY and one PROCESSING row', async () => {
+  const b = await mkBooking({ status: 'PROCESSING', tests: [testA._id, testB._id] });
+  await mkReport(b, testA, { issuedAt: new Date('2026-09-12') });
+  const rows = (await get()).json().reports;
+  assert.equal(rows.length, 2);
+  const ready = rows.find((r) => r.status === 'READY');
+  const pending = rows.find((r) => r.status === 'PROCESSING');
+  assert.equal(ready.title, 'CBC');
+  assert.equal(pending.title, 'Lipid Panel');
+});
+
+test('READY row without issuedAt sorts by booking scheduledDate (no NaN)', async () => {
+  const b = await mkBooking({ scheduledDate: new Date('2026-09-20') });
+  const r = await mkReport(b, testA);
+  await Report.collection.updateOne({ _id: r._id }, { $set: { issuedAt: null } });
+  const old = await mkBooking({ scheduledDate: new Date('2026-09-01') });
+  await mkReport(old, testA, { issuedAt: new Date('2026-09-02') });
+  const rows = (await get()).json().reports;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]._id, r._id.toString());
+});
