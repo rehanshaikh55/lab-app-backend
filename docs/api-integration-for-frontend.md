@@ -159,7 +159,7 @@ Every status change is now audit-logged — see `GET /bookings/:id/events` in §
 ```
 POST /api/auth/register
 {
-  "name":     "Asha Rao",
+  "name":     "Asha Rao",       // 2-100 chars; letters, spaces, apostrophes, hyphens only ("K. Ramesh" -> 400)
   "email":    "asha@labzy.in",
   "password": "atLeast6Chars",
   "phone":    "+919999990000",       // optional, contact-only — never used for OTP
@@ -594,6 +594,16 @@ POST /api/bookings/:id/cancel
 
 A 409 means the booking is past the cancellable stage — disable the button. If the lab has a configured cancellation fee and you're inside the cutoff window, the call still succeeds (200) but `cancelReason` gets a fee note appended — see §1.3's note on `CANCELLATION_FEE_APPLICABLE`.
 
+#### Switch to pay-at-lab (after a failed/abandoned online payment)
+
+```
+PATCH /api/bookings/:id/payment-method
+{ "paymentMethod":"PAY_AT_LAB" }          // the only accepted value
+→ 200 { "booking": { "...", "paymentMethod":"PAY_AT_LAB", "status":"PENDING", "timeline":[...] } }
+```
+
+Customer-owned bookings only (anyone else gets 404). Allowed only while the booking is `PENDING` and currently `ONLINE`; otherwise 409 `INVALID_BOOKING_TRANSITION` with detail "This booking can no longer change its payment method." The coupon, totals and slot hold are unchanged.
+
 #### Reschedule
 
 ```
@@ -815,7 +825,7 @@ POST /api/tickets
 → 201 { "ticket": { "_id":"...", "state":"OPEN", "priority":"HIGH", ... } }
 ```
 
-`category` is one of `DELAY`, `REFUND`, `REPORT_ISSUE`, `ASSISTANT_BEHAVIOR`, `PAYMENT`, `SAFETY`, `PRESCRIPTION`, `OTHER`. `bookingId` is optional (omit for general support). `priority` is set automatically server-side — `HIGH` for `REFUND`/`REPORT_ISSUE`/`SAFETY`/`PAYMENT`, `NORMAL` otherwise; don't expose a manual priority picker.
+`category` is one of `DELAY`, `REFUND`, `REPORT_ISSUE`, `ASSISTANT_BEHAVIOR`, `PAYMENT`, `SAFETY`, `PRESCRIPTION`, `OTHER`. `bookingId` is optional (omit for general support). `priority` is set automatically server-side — `HIGH` for `REFUND`/`REPORT_ISSUE`/`SAFETY`/`PAYMENT`, `NORMAL` otherwise; don't expose a manual priority picker. `PRESCRIPTION` tickets cannot be created through `POST /tickets` (rejected) — they are created only by uploading a photo via `POST /me/prescriptions` (2.13).
 
 ```
 GET /api/tickets?state=OPEN&page=1&limit=20        → { "tickets":[...], "total":..., "page":..., "limit":... }
@@ -842,7 +852,7 @@ Render `ticket.messages[]` as a chat-style thread; `fromRole` is `CUSTOMER` or `
 GET /api/catalog/tests?q=cbc&category=Blood&isPackage=false&homeOnly=true&noFasting=true&maxTat=24&maxPrice=500&sampleType=Blood&sort=rel&lat=12.97&lng=77.64&radius=10000&page=1&limit=20
 → 200 {
   "items":[{
-    "code":"CBC", "name":"Complete Blood Count", "category":"Blood", "description":"...",
+    "code":"complete-blood-count-cbc", "name":"Complete Blood Count", "category":"Blood", "description":"...",
     "plainLanguageDescription":"...", "parametersCount":22, "sampleType":"Blood",
     "fastingHours":0, "isPackage":false,
     "price":300, "mrp":400,            // cheapest active lab's price
@@ -860,13 +870,13 @@ All query params are optional. `sort` is `rel` (default; most labs first), `low`
 
 ```
 POST /api/catalog/quote
-{ "codes":["CBC","LIPID"], "lat":12.97, "lng":77.64, "radius":10000 }     // codes: 1-30 unique; lat/lng/radius optional
+{ "codes":["complete-blood-count-cbc","lipid-profile"], "lat":12.97, "lng":77.64, "radius":10000 }     // codes: 1-30 unique; lat/lng/radius optional
 → 200 {
   "labs":[{
     "lab":{ "_id":"...", "name":"...", "address":{...}, "rating":4.6, "totalRatings":120,
             "certifications":[...], "photos":[...], "offerText":"...", "openingHours":{...},
             "cancellationCutoffHours":4, "distanceMeters":1800 },        // distanceMeters is null without lat/lng
-    "items":[{ "code":"CBC", "testId":"...", "name":"...", "price":300, "mrp":400,
+    "items":[{ "code":"complete-blood-count-cbc", "testId":"...", "name":"...", "price":300, "mrp":400,
                "turnaroundHours":12, "fastingHours":0, "homeCollection":true }],
     "subtotal":700, "mrpTotal":900, "maxTurnaroundHours":24,
     "homeCollectionAvailable":true, "homeCollectionFee":50, "homeCollectionWaiverAbove":500
@@ -900,9 +910,10 @@ PUT /api/profile
 → 200 { "user": {...} }
 ```
 
-`age` 1-120 (integer), `weight` 20-200 (kg), `height` 100-250 (cm), `bloodGroup` one of `A+ A- B+ B- O+ O- AB+ AB- unknown`, `registrationStep` 1 or 2.
+`age` 1-120 (integer), `weight` 20-200 (kg), `height` 100-250 (cm), `bloodGroup` one of `A+ A- B+ B- O+ O- AB+ AB- unknown`, `registrationStep` 1 or 2. A user whose `registrationStep` was never saved is reported as `2` (so the field is always present in responses; the server no longer stores a default).
 
 `POST /api/me/dependents` and `PUT /api/me/dependents/:id` also accept `age` (integer 0-120) alongside `name`, `relation`, `gender`, `birthDate`.
+
 
 #### Reports feed (Reports tab)
 
@@ -915,7 +926,7 @@ GET /api/me/reports?patient=all          // patient: "all" (default) | "self" | 
   "patient":{ "name":"Asha", "relation":"mother", "dependentId":"..." | null },
   "status":"READY" | "PROCESSING",
   "title":"Lipid Panel",
-  "testIds":["..."], "catalogCodes":["LIPID"],
+  "testIds":["..."], "catalogCodes":["lipid-profile"],
   "issuedAt":"..." | null, "expectedAt":"..." | null,
   "parameters":[{ "name":"LDL", "value":"128", "unit":"mg/dL", "flag":"HIGH" }],
   "remindRetestAt":null
