@@ -1,5 +1,6 @@
 import * as profileService from '../services/profileService.js';
 import * as discoveryService from '../services/discoveryService.js';
+import * as myReportsService from '../services/myReportsService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const getProfile = asyncHandler(async (req, reply) =>
@@ -86,4 +87,11 @@ export const recordSearch = asyncHandler(async (req, reply) =>
 export const watchLabsNearby = asyncHandler(async (req, reply) =>
   reply.code(201).send({
     watch: await discoveryService.watchLabsNearby({ userId: req.user._id, ...req.body }),
+  }));
+
+// Reports tab feed
+
+export const listMyReports = asyncHandler(async (req, reply) =>
+  reply.code(200).send({
+    reports: await myReportsService.listMyReports({ userId: req.user._id, patient: req.query.patient }),
   }));

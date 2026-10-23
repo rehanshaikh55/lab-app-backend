@@ -15,6 +15,7 @@ import {
   listRecentSearches,
   recordSearch,
   watchLabsNearby,
+  listMyReports,
 } from '../controllers/profileController.js';
 
 const NAME_SCHEMA = { type: 'string', minLength: 2, maxLength: 100, pattern: "^[A-Za-z][A-Za-z '\\-]{1,99}$" };
@@ -186,4 +187,15 @@ export const profileRoutes = async (fastify) => {
       },
     },
   }, watchLabsNearby);
+
+  // Reports tab feed: READY reports + PROCESSING bookings, newest first
+  fastify.get('/me/reports', {
+    ...auth,
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { patient: { type: 'string', default: 'all' } },
+      },
+    },
+  }, listMyReports);
 };
