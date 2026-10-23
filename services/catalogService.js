@@ -36,6 +36,8 @@ export const listCatalog = async (q = {}) => {
       },
     }).distinct('_id');
     testMatch.lab = { $in: labIds };
+  } else {
+    testMatch.lab = { $in: await Lab.find({ isActive: true }).distinct('_id') };
   }
 
   const itemMatch = {};
@@ -48,11 +50,6 @@ export const listCatalog = async (q = {}) => {
 
   const pipeline = [
     { $match: testMatch },
-    { $lookup: {
-        from: 'labs', localField: 'lab', foreignField: '_id', as: 'labDoc',
-        pipeline: [{ $match: { isActive: true } }, { $project: { _id: 1 } }],
-    } },
-    { $match: { labDoc: { $ne: [] } } },
     { $sort: { price: 1 } },
     { $group: {
         _id: '$catalogCode',

@@ -230,3 +230,50 @@ test('POST /catalog/quote rejects empty codes', async () => {
   const res = await postQuote({ codes: [] });
   assert.equal(res.statusCode, 400);
 });
+
+// ---- listCatalog filters/sort/pagination (behaviour-preserving coverage) ----
+const seedFilterable = async () => {
+  await Test.create([
+    { lab: lab._id, name: 'Alpha Panel', price: 100, turnaroundHours: 24, homeCollection: true },
+    { lab: lab._id, name: 'Beta Panel', price: 200, turnaroundHours: 6, homeCollection: false },
+    { lab: lab._id, name: 'Gamma Panel', price: 300, turnaroundHours: 12, homeCollection: true },
+  ]);
+};
+
+test('GET /catalog/tests?homeOnly=true keeps only home-collectable items', async () => {
+  await seedFilterable();
+  const body = (await getCatalog('?homeOnly=true&sort=low')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['alpha-panel', 'gamma-panel']);
+});
+
+test('GET /catalog/tests?maxTat=12 keeps items with turnaround <= 12h', async () => {
+  await seedFilterable();
+  const body = (await getCatalog('?maxTat=12&sort=low')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['beta-panel', 'gamma-panel']);
+});
+
+test('GET /catalog/tests?sort=fast orders by turnaround ascending', async () => {
+  await seedFilterable();
+  const body = (await getCatalog('?sort=fast')).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['beta-panel', 'gamma-panel', 'alpha-panel']);
+});
+
+test('GET /catalog/tests paginates with page/pages/total', async () => {
+  await seedFilterable();
+  const p1 = (await getCatalog('?sort=low&limit=2&page=1')).json();
+  assert.deepEqual(p1.items.map((i) => i.code), ['alpha-panel', 'beta-panel']);
+  assert.equal(p1.total, 3);
+  assert.equal(p1.page, 1);
+  assert.equal(p1.pages, 2);
+  const p2 = (await getCatalog('?sort=low&limit=2&page=2')).json();
+  assert.deepEqual(p2.items.map((i) => i.code), ['gamma-panel']);
+  assert.equal(p2.page, 2);
+});
+
+test('GET /catalog/tests ignores tests of inactive labs', async () => {
+  await seedCatalog();
+  await Lab.updateOne({ _id: lab._id }, { isActive: false });
+  const body = (await getCatalog()).json();
+  assert.deepEqual(body.items.map((i) => i.code), ['complete-blood-count-cbc']);
+  assert.equal(body.items[0].labCount, 1);
+});
