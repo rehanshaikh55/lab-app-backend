@@ -45,7 +45,7 @@ const userSchema = new mongoose.Schema({
   weight:           { type: Number },
   height:           { type: Number },
   bloodGroup:       { type: String, enum: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'unknown'] },
-  registrationStep: { type: Number, enum: [0, 1, 2], default: 0 },
+  registrationStep: { type: Number, enum: [0, 1, 2] },
   profileCompleted: { type: Boolean, default: false },
   lastLoginAt:      { type: Date },
   // Task 24: 30-day account-deletion grace period. Set by requestAccountDeletion,

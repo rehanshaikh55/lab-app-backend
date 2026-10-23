@@ -7,10 +7,14 @@ import { Errors } from '../common/errors.js';
 const SAFE_SELECT = '-passwordHash -resetToken -resetTokenExpiry';
 const GRACE_DAYS = 30;
 
+// Legacy users predate the registration flow and have no stored value: read them as fully registered (2).
+export const withRegistrationStep = (user) =>
+  (user ? { ...user.toJSON(), registrationStep: user.registrationStep ?? 2 } : user);
+
 export const getProfile = async (userId) => {
   const user = await User.findById(userId).select(SAFE_SELECT);
   if (!user) throw Errors.NOT_FOUND('User');
-  return user;
+  return withRegistrationStep(user);
 };
 
 // birthDate = today minus `age` years (same month/day).
@@ -30,12 +34,11 @@ export const updateProfile = async ({ userId, body }) => {
   }
   if (body.birthDate !== undefined) update.birthDate = new Date(body.birthDate);
   if (body.age !== undefined) update.birthDate = birthDateFromAge(body.age);
-  if (body.registrationStep !== undefined) {
-    // Only ever increases: keep the stored value when the request is lower.
-    const current = await User.findById(userId).select('registrationStep');
-    update.registrationStep = Math.max(current?.registrationStep ?? 0, body.registrationStep);
-  }
-  return User.findByIdAndUpdate(userId, update, { new: true }).select(SAFE_SELECT);
+  const ops = { $set: update };
+  // Only ever increases: $max is atomic, so concurrent requests cannot lower the stored value.
+  if (body.registrationStep !== undefined) ops.$max = { registrationStep: body.registrationStep };
+  const user = await User.findByIdAndUpdate(userId, ops, { new: true }).select(SAFE_SELECT);
+  return withRegistrationStep(user);
 };
 
 export const addAddress = async ({ userId, body }) => {

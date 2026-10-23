@@ -66,6 +66,7 @@ const publicUser = (user) => ({
   email: user.email,
   phone: user.phone,
   roles: user.roles,
+  registrationStep: user.registrationStep ?? 2, // absent on legacy users = fully registered
 });
 
 export const register = async ({ name, email, password, phone, role, gender, birthDate, consents, deviceId, deviceLabel, ip, ua }) => {
@@ -88,7 +89,7 @@ export const register = async ({ name, email, password, phone, role, gender, bir
   const passwordHash = await bcrypt.hash(password, 12);
   const roles = role === 'LAB_OWNER' ? ['LAB_OWNER'] : ['CUSTOMER'];
   const user = await User.create({
-    name, email, passwordHash, phone, roles, gender,
+    name, email, passwordHash, phone, roles, gender, registrationStep: 0,
     birthDate: birthDate ? new Date(birthDate) : undefined,
   });
 

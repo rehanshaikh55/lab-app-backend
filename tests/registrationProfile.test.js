@@ -80,3 +80,32 @@ test('backfillRegistrationStep sets 2 where missing', async () => {
   const mine = await User.findOne({ email: 'a@x.com' });
   assert.equal(mine.registrationStep, 0);
 });
+
+test('legacy user (no registrationStep) logs in, reads as 2, and is not locked to 0 by save()', async () => {
+  const bcrypt = (await import('bcryptjs')).default;
+  const passwordHash = await bcrypt.hash('pass1234', 4);
+  const { insertedId } = await User.collection.insertOne({
+    name: 'Old Timer', email: 'legacy@x.com', passwordHash, roles: ['CUSTOMER'],
+  });
+  const login = await app.inject({
+    method: 'POST', url: '/api/auth/login', payload: { email: 'legacy@x.com', password: 'pass1234' },
+  });
+  assert.equal(login.statusCode, 200);
+  assert.equal(login.json().user.registrationStep, 2);
+  const res = await app.inject({
+    method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${login.json().accessToken}` },
+  });
+  assert.equal(res.json().user.registrationStep, 2);
+  const raw = await User.collection.findOne({ _id: insertedId });
+  assert.equal(raw.registrationStep, undefined); // login save() must not persist a default
+  await backfillRegistrationStep();
+  assert.equal((await User.collection.findOne({ _id: insertedId })).registrationStep, 2);
+});
+
+test('signup response user reports registrationStep 0', async () => {
+  const res = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'Bina', email: 'b@x.com', password: 'pass1234', birthDate: '1990-01-01', consents: fullConsent },
+  });
+  assert.equal(res.json().user.registrationStep, 0);
+});
