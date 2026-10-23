@@ -42,6 +42,7 @@ const labSchema = new mongoose.Schema({
   totalRatings: { type: Number, default: 0 },
   photos:       [{ url: String, caption: String }],
   description:  { type: String },
+  offerText:    { type: String },
   amenities:    [{ type: String }],
   isActive:     { type: Boolean, default: true },
   isVerified:   { type: Boolean, default: false },
