@@ -48,7 +48,7 @@ export const catalogRoutes = async (fastify) => {
   fastify.get('/coupons/:code/evaluate', {
     ...auth,
     schema: {
-      params: { type: 'object', required: ['code'], properties: { code: { type: 'string' } } },
+      params: { type: 'object', required: ['code'], properties: { code: { type: 'string', maxLength: 40 } } },
       querystring: { type: 'object', required: ['amount'], properties: { amount: { type: 'number', minimum: 0 } } },
     },
   }, evaluateCouponCode);

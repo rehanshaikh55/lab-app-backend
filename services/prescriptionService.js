@@ -4,7 +4,7 @@ import { Errors } from '../common/errors.js';
 import { readUploadBuffer } from './_shared/readUpload.js';
 
 const MAX_PRESCRIPTION_SIZE = 10 * 1024 * 1024;
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic' };
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/heif': 'heif', 'image/jpg': 'jpg' };
 const MAX_NOTE_LENGTH = 500;
 const DEFAULT_NOTE = 'Please add the tests on my prescription.';
 

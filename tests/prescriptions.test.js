@@ -127,3 +127,11 @@ test('partner report upload over 10 MB returns FILE_TOO_LARGE', async () => {
   assert.equal(res.statusCode, 413);
   assert.match(res.body, /FILE_TOO_LARGE/);
 });
+
+for (const [type, ext] of [['image/heif', 'heif'], ['image/jpg', 'jpg']]) {
+  test(`${type} upload is accepted and stored with .${ext}`, async () => {
+    const res = await post(multipart({ file: { name: `rx.${ext}`, type, data: Buffer.from('img') } }));
+    assert.equal(res.statusCode, 201);
+    assert.match(uploadMock.mock.calls.at(-1).arguments[1], new RegExp(`\.${ext}$`));
+  });
+}
