@@ -1,31 +1,19 @@
 import Ticket from '../models/ticket.js';
 import { storage } from '../integrations/storage/storage.js';
 import { Errors } from '../common/errors.js';
+import { readUploadBuffer } from './_shared/readUpload.js';
 
 const MAX_PRESCRIPTION_SIZE = 10 * 1024 * 1024;
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic' };
+const MAX_NOTE_LENGTH = 500;
 const DEFAULT_NOTE = 'Please add the tests on my prescription.';
 
 export const uploadPrescription = async ({ userId, fileData }) => {
   if (!fileData) throw Errors.VALIDATION_ERROR('No file uploaded');
   const ext = EXT_BY_MIME[fileData.mimetype];
-  if (!ext) throw Errors.INVALID_FILE_TYPE();
+  if (!ext) throw Errors.INVALID_FILE_TYPE('Please upload a JPG, PNG or HEIC photo of your prescription.');
 
-  const chunks = [];
-  let total = 0;
-  try {
-    for await (const chunk of fileData.file) {
-      total += chunk.length;
-      if (total > MAX_PRESCRIPTION_SIZE) throw Errors.FILE_TOO_LARGE();
-      chunks.push(chunk);
-    }
-  } catch (err) {
-    if (err?.code === 'FST_REQ_FILE_TOO_LARGE') throw Errors.FILE_TOO_LARGE();
-    throw err;
-  }
-  if (fileData.file.truncated) throw Errors.FILE_TOO_LARGE();
-
-  const buffer = Buffer.concat(chunks);
+  const buffer = await readUploadBuffer(fileData, MAX_PRESCRIPTION_SIZE);
   const uri = `prescriptions/${userId}/${Date.now()}.${ext}`;
   await storage.uploadBuffer(buffer, uri, fileData.mimetype);
 
@@ -38,7 +26,7 @@ export const uploadPrescription = async ({ userId, fileData }) => {
     messages: [{
       fromUserId: userId,
       fromRole: 'CUSTOMER',
-      text: note || DEFAULT_NOTE,
+      text: note ? note.slice(0, MAX_NOTE_LENGTH) : DEFAULT_NOTE,
       attachments: [{ uri }],
     }],
   });

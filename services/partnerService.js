@@ -4,6 +4,7 @@ import Lab from '../models/lab.js';
 import LabAssistant from '../models/labAssistant.js';
 import { storage } from '../integrations/storage/storage.js';
 import { Errors } from '../common/errors.js';
+import { readUploadBuffer } from './_shared/readUpload.js';
 import { assertTransition, buildTimeline } from './_shared/transitions.js';
 import { recordEvent } from './_shared/events.js';
 import { releaseSlot } from './slotCapacityService.js';
@@ -161,14 +162,7 @@ export const uploadReportFile = async ({ userId, fileData }) => {
   await getOwnedLab(userId);
   if (!fileData) throw Errors.VALIDATION_ERROR('No file uploaded');
   if (fileData.mimetype !== 'application/pdf') throw Errors.INVALID_FILE_TYPE();
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of fileData.file) {
-    total += chunk.length;
-    if (total > MAX_REPORT_SIZE) throw Errors.FILE_TOO_LARGE();
-    chunks.push(chunk);
-  }
-  const buffer = Buffer.concat(chunks);
+  const buffer = await readUploadBuffer(fileData, MAX_REPORT_SIZE);
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
   const bookingId = fileData.fields?.bookingId?.value || 'tmp';
   const filePath = `reports/${bookingId}/${Date.now()}.pdf`;

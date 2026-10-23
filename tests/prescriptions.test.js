@@ -5,6 +5,7 @@ import { setupTestApp, teardownTestApp } from './helpers/buildApp.js';
 import { storage } from '../integrations/storage/storage.js';
 import User from '../models/user.js';
 import Ticket from '../models/ticket.js';
+import Lab from '../models/lab.js';
 import { Errors } from '../common/errors.js';
 
 let app, token, customer, uploadMock;
@@ -36,7 +37,7 @@ const post = (body, auth = true) => app.inject({
 });
 
 beforeEach(async () => {
-  await Promise.all([User.deleteMany({}), Ticket.deleteMany({})]);
+  await Promise.all([User.deleteMany({}), Ticket.deleteMany({}), Lab.deleteMany({})]);
   customer = await User.create({ name: 'Cust', email: 'rx-cust@x.com', roles: ['CUSTOMER'], passwordHash: await bcrypt.hash('pass123', 12) });
   const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'rx-cust@x.com', password: 'pass123' } });
   token = login.json().accessToken;
@@ -90,4 +91,39 @@ test('11 MB file is rejected with FILE_TOO_LARGE', async () => {
 test('missing auth returns 401', async () => {
   const res = await post(multipart({ file: { name: 'rx.png', type: 'image/png', data: Buffer.from('x') } }), false);
   assert.equal(res.statusCode, 401);
+});
+
+test('wrong file type uses a prescription-specific detail', async () => {
+  const res = await post(multipart({ file: { name: 'rx.pdf', type: 'application/pdf', data: Buffer.from('%PDF') } }));
+  assert.equal(res.json().detail, 'Please upload a JPG, PNG or HEIC photo of your prescription.');
+});
+
+test('request without a file part returns 400 VALIDATION_ERROR', async () => {
+  const res = await post(multipart({ note: 'just a note' }));
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body, /VALIDATION_ERROR/);
+  assert.equal(await Ticket.countDocuments({}), 0);
+});
+
+test('note is truncated to 500 characters', async () => {
+  const res = await post(multipart({ note: 'a'.repeat(600), file: { name: 'rx.png', type: 'image/png', data: Buffer.from('x') } }));
+  assert.equal(res.statusCode, 201);
+  const row = await Ticket.findById(res.json().ticket._id);
+  assert.equal(row.messages[0].text.length, 500);
+});
+
+test('partner report upload over 10 MB returns FILE_TOO_LARGE', async () => {
+  const owner = await User.create({ name: 'Owner', email: 'rx-owner@x.com', roles: ['LAB_OWNER'], passwordHash: await bcrypt.hash('pass123', 12) });
+  await Lab.create({
+    owner: owner._id, name: 'Lab A', location: { type: 'Point', coordinates: [77.5, 12.9] },
+    slotMatrix: { duration: 30, intervalMinutes: 30, maxBookingsPerSlot: 5 }, isActive: true, isVerified: true,
+  });
+  const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'rx-owner@x.com', password: 'pass123' } });
+  const res = await app.inject({
+    method: 'POST', url: '/api/partner/reports/upload',
+    headers: { 'content-type': `multipart/form-data; boundary=${BOUNDARY}`, authorization: `Bearer ${login.json().accessToken}` },
+    payload: multipart({ file: { name: 'r.pdf', type: 'application/pdf', data: Buffer.alloc(11 * 1024 * 1024, 1) } }),
+  });
+  assert.equal(res.statusCode, 413);
+  assert.match(res.body, /FILE_TOO_LARGE/);
 });

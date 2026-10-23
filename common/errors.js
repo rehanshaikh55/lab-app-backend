@@ -39,8 +39,8 @@ export const Errors = {
     new DomainError('INVALID_SUBSCRIPTION_STATE', 409, detail || 'Invalid subscription state transition'),
   FILE_TOO_LARGE: () =>
     new DomainError('FILE_TOO_LARGE', 413, 'Upload exceeds 10MB limit'),
-  INVALID_FILE_TYPE: () =>
-    new DomainError('INVALID_FILE_TYPE', 415, 'Only PDF accepted for reports'),
+  INVALID_FILE_TYPE: (detail) =>
+    new DomainError('INVALID_FILE_TYPE', 415, detail || 'Only PDF accepted for reports'),
   NOT_FOUND: (resource, instance) =>
     new DomainError('NOT_FOUND', 404, `${resource || 'Resource'} not found`, instance),
   UNAUTHORIZED: () =>
