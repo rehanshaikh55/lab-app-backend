@@ -80,7 +80,7 @@ const seedCatalog = async () => {
   });
   await Test.create([
     { lab: lab._id, name: 'Complete Blood Count (CBC)', price: 299, mrp: 450, turnaroundHours: 6 },
-    { lab: lab._id, name: 'Lipid Profile', price: 549, fastingHours: 12 },
+    { lab: lab._id, name: 'Lipid Profile', price: 549, mrp: 700, fastingHours: 12 },
     { lab: labB._id, name: 'Complete Blood Count (CBC)', price: 349, turnaroundHours: 4 },
     { lab: inactive._id, name: 'Complete Blood Count (CBC)', price: 99, turnaroundHours: 1 },
   ]);
@@ -160,4 +160,73 @@ test('GET /catalog/tests with lat/lng/radius excludes far labs', async () => {
   assert.equal(cbc.labCount, 1);
   assert.equal(cbc.price, 299);
   assert.equal(cbc.turnaroundHours, 6);
+});
+
+// ---- POST /api/catalog/quote ----
+const postQuote = async (payload) => {
+  const token = await catalogToken();
+  return app.inject({
+    method: 'POST', url: '/api/catalog/quote', payload,
+    headers: { authorization: `Bearer ${token}` },
+  });
+};
+
+const CBC = 'complete-blood-count-cbc';
+
+test('POST /catalog/quote returns only labs offering every code', async () => {
+  await seedCatalog();
+  const res = await postQuote({ codes: [CBC, 'lipid-profile'] });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.labs.length, 1);
+  assert.deepEqual(body.missing, []);
+  const q = body.labs[0];
+  assert.equal(q.lab.name, 'Lab A');
+  assert.equal(q.subtotal, 848);
+  assert.equal(q.mrpTotal, 1150);
+  assert.equal(q.lab.distanceMeters, null);
+  const aTests = await Test.find({ lab: lab._id });
+  assert.deepEqual(
+    q.items.map((i) => i.testId).sort(),
+    aTests.map((t) => String(t._id)).sort(),
+  );
+  assert.equal(q.maxTurnaroundHours, Math.max(...aTests.map((t) => t.turnaroundHours)));
+  assert.equal(q.homeCollectionAvailable, true);
+  assert.equal(q.lab.openingHours.monday.open, '09:00');
+  assert.equal(q.lab.openingHours.monday.close, '18:00');
+  assert.equal(q.lab.cancellationCutoffHours, 4);
+});
+
+test('POST /catalog/quote sorts by subtotal ascending', async () => {
+  await seedCatalog();
+  const body = (await postQuote({ codes: [CBC] })).json();
+  assert.deepEqual(body.labs.map((l) => [l.lab.name, l.subtotal]), [['Lab A', 299], ['Lab B', 349]]);
+});
+
+test('POST /catalog/quote reports codes no lab offers as missing', async () => {
+  await seedCatalog();
+  const body = (await postQuote({ codes: [CBC, 'unknown-code'] })).json();
+  assert.deepEqual(body.labs, []);
+  assert.deepEqual(body.missing, ['unknown-code']);
+});
+
+test('POST /catalog/quote carries home collection fee and waiver unchanged', async () => {
+  await seedCatalog();
+  await Lab.updateOne({ _id: lab._id }, { 'policy.homeCollectionFee': 49, 'policy.homeCollectionWaiverAbove': 499 });
+  const body = (await postQuote({ codes: [CBC] })).json();
+  const a = body.labs.find((l) => l.lab.name === 'Lab A');
+  assert.equal(a.homeCollectionFee, 49);
+  assert.equal(a.homeCollectionWaiverAbove, 499);
+});
+
+test('POST /catalog/quote with lat/lng filters by radius and adds distance', async () => {
+  await seedCatalog();
+  const body = (await postQuote({ codes: [CBC], lat: 12.9, lng: 77.5, radius: 1000 })).json();
+  assert.deepEqual(body.labs.map((l) => l.lab.name), ['Lab A']);
+  assert.equal(typeof body.labs[0].lab.distanceMeters, 'number');
+});
+
+test('POST /catalog/quote rejects empty codes', async () => {
+  const res = await postQuote({ codes: [] });
+  assert.equal(res.statusCode, 400);
 });

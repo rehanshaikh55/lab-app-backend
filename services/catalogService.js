@@ -84,3 +84,69 @@ export const listCatalog = async (q = {}) => {
   const total = res.meta[0]?.total || 0;
   return { items: res.items, total, page, pages: Math.ceil(total / lim) };
 };
+
+// Labs (active, optionally within radius) able to fulfil every code in the cart, cheapest first.
+export const quoteCart = async ({ codes, lat, lng, radius = 10000 }) => {
+  let labs;
+  if (lat !== undefined && lng !== undefined) {
+    labs = await Lab.aggregate([
+      { $geoNear: {
+          near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+          distanceField: 'distanceMeters',
+          maxDistance: parseInt(radius),
+          spherical: true,
+          query: { isActive: true },
+      } },
+    ]);
+  } else {
+    labs = await Lab.find({ isActive: true }).lean();
+  }
+  const labById = new Map(labs.map((l) => [String(l._id), l]));
+
+  const tests = await Test.find({
+    isActive: true, catalogCode: { $in: codes }, lab: { $in: [...labById.keys()] },
+  }).lean();
+
+  const seen = new Set();
+  const byLab = new Map();
+  for (const t of tests) {
+    seen.add(t.catalogCode);
+    const key = String(t.lab);
+    if (!byLab.has(key)) byLab.set(key, new Map());
+    const items = byLab.get(key);
+    const prev = items.get(t.catalogCode);
+    if (!prev || t.price < prev.price) items.set(t.catalogCode, t); // duplicate code in one lab: cheapest wins
+  }
+
+  const quotes = [];
+  for (const [labId, items] of byLab) {
+    if (items.size !== codes.length) continue;
+    const l = labById.get(labId);
+    const rows = codes.map((code) => {
+      const t = items.get(code);
+      return {
+        code, testId: String(t._id), name: t.name, price: t.price, mrp: t.mrp ?? t.price,
+        turnaroundHours: t.turnaroundHours, fastingHours: t.fastingHours, homeCollection: t.homeCollection,
+      };
+    });
+    quotes.push({
+      lab: {
+        _id: l._id, name: l.name, address: l.address, rating: l.rating, totalRatings: l.totalRatings,
+        certifications: l.certifications, photos: l.photos, offerText: l.offerText,
+        openingHours: l.openingHours,
+        cancellationCutoffHours: l.policy?.cancellationCutoffHours,
+        distanceMeters: l.distanceMeters ?? null,
+      },
+      items: rows,
+      subtotal: rows.reduce((s, r) => s + r.price, 0),
+      mrpTotal: rows.reduce((s, r) => s + r.mrp, 0),
+      maxTurnaroundHours: Math.max(...rows.map((r) => r.turnaroundHours || 0)),
+      homeCollectionAvailable: rows.every((r) => r.homeCollection),
+      homeCollectionFee: l.policy?.homeCollectionFee ?? 0,
+      homeCollectionWaiverAbove: l.policy?.homeCollectionWaiverAbove ?? 0,
+    });
+  }
+  quotes.sort((a, b) => a.subtotal - b.subtotal || (b.lab.rating || 0) - (a.lab.rating || 0));
+
+  return { labs: quotes, missing: codes.filter((c) => !seen.has(c)) };
+};

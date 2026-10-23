@@ -1,5 +1,5 @@
 import { verifyJWT } from '../middlewares/authMiddleware.js';
-import { getCatalogTests } from '../controllers/catalogController.js';
+import { getCatalogTests, quoteCatalogCart } from '../controllers/catalogController.js';
 
 export const catalogRoutes = async (fastify) => {
   const auth = { preHandler: [verifyJWT] };
@@ -28,4 +28,20 @@ export const catalogRoutes = async (fastify) => {
       },
     },
   }, getCatalogTests);
+
+  fastify.post('/catalog/quote', {
+    ...auth,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['codes'],
+        properties: {
+          codes:  { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, maxItems: 30, uniqueItems: true },
+          lat:    { type: 'number' },
+          lng:    { type: 'number' },
+          radius: { type: 'integer', default: 10000, minimum: 1 },
+        },
+      },
+    },
+  }, quoteCatalogCart);
 };
