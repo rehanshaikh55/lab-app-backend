@@ -35,6 +35,9 @@ export const createIntent = async ({ user, bookingId }) => {
   if (booking.status !== 'PENDING') {
     throw Errors.INVALID_BOOKING_TRANSITION(`Booking ${booking.status} cannot accept new payments`);
   }
+  if (booking.paymentMethod === 'PAY_AT_LAB') {
+    throw Errors.INVALID_BOOKING_TRANSITION('This booking is set to pay at collection.');
+  }
 
   let providerOrderId;
   if (usingStub()) {
@@ -145,6 +148,7 @@ export const handleRazorpayWebhook = async ({ rawBody, signature, payload }) => 
     const fromStatus = booking.status;
     assertTransition(fromStatus, 'CONFIRMED');
     booking.status = 'CONFIRMED';
+    booking.paymentMethod = 'ONLINE';
     await booking.save();
     await recordEvent({ booking, fromStatus, toStatus: 'CONFIRMED', actorType: 'SYSTEM', reason: 'payment-captured' });
     notifyBookingStatus(booking).catch(() => {});
