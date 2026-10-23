@@ -2,7 +2,7 @@ import * as bookingService from '../services/bookingService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const createBooking = asyncHandler(async (request, reply) => {
-  const { labId, testIds, packageId, scheduledDate, slot, collectionType, userAddressId, dependentId, paymentMethod } = request.body;
+  const { labId, testIds, packageId, scheduledDate, slot, collectionType, userAddressId, dependentId, paymentMethod, couponCode } = request.body;
   const booking = await bookingService.createBooking({
     user: request.user,
     labId,
@@ -14,6 +14,7 @@ export const createBooking = asyncHandler(async (request, reply) => {
     userAddressId,
     dependentId,
     paymentMethod,
+    couponCode,
   });
   return reply.code(201).send({ booking });
 });

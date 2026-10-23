@@ -39,6 +39,7 @@ export const bookingRoutes = async (fastify) => {
           userAddressId:  { type: 'string' },
           dependentId:    { type: 'string' },
           paymentMethod:  { type: 'string', enum: ['ONLINE', 'PAY_AT_LAB'] },
+          couponCode:     { type: 'string', minLength: 1 },
         },
         additionalProperties: false,
       },

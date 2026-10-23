@@ -10,6 +10,7 @@ import { addMinutes, weekdayName } from './_shared/slotTime.js';
 import { reserveSlot, releaseSlot } from './slotCapacityService.js';
 import { notifyBookingStatus } from './notificationService.js';
 import { generateCode } from './bookingCodeService.js';
+import { evaluateCoupon } from './couponService.js';
 import { connect as connectMaskedCall } from './maskedCallService.js';
 
 const HOLD_MS = 10 * 60 * 1000; // PRD §6.4 FR-5
@@ -61,7 +62,7 @@ const resolvePatient = (user, dependentId) => {
   };
 };
 
-export const createBooking = async ({ user, labId, testIds, packageId, scheduledDate, slot, collectionType, userAddressId, dependentId, paymentMethod = 'ONLINE' }) => {
+export const createBooking = async ({ user, labId, testIds, packageId, scheduledDate, slot, collectionType, userAddressId, dependentId, paymentMethod = 'ONLINE', couponCode }) => {
   const lab = await Lab.findById(labId);
   if (!lab || !lab.isActive) throw Errors.NOT_FOUND('Lab', '/bookings');
 
@@ -89,6 +90,14 @@ export const createBooking = async ({ user, labId, testIds, packageId, scheduled
     if (waiverThreshold > 0 && cart.totalAmount >= waiverThreshold) homeCollectionFee = 0;
   }
 
+  let discountAmount = 0;
+  let appliedCoupon = null;
+  if (couponCode) {
+    const result = await evaluateCoupon({ code: couponCode, userId: user._id, amount: cart.totalAmount });
+    discountAmount = result.discount;
+    appliedCoupon = result.code;
+  }
+
   await reserveSlot({ labId, scheduledDate, slotStart: slot.start, maxPerSlot });
 
   try {
@@ -103,8 +112,10 @@ export const createBooking = async ({ user, labId, testIds, packageId, scheduled
       collectionType,
       userAddress,
       patient,
-      totalAmount: cart.totalAmount + homeCollectionFee,
+      totalAmount: cart.totalAmount - discountAmount + homeCollectionFee,
       homeCollectionFee,
+      couponCode: appliedCoupon,
+      discountAmount,
       slotHoldExpiry: new Date(Date.now() + HOLD_MS),
       status: 'PENDING',
       code,

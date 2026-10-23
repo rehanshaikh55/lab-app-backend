@@ -50,6 +50,8 @@ const bookingSchema = new mongoose.Schema({
   patient:        patientSnapshotSchema,
   totalAmount:    { type: Number, required: true },
   homeCollectionFee: { type: Number, default: 0 },
+  couponCode:     { type: String, default: null },
+  discountAmount: { type: Number, default: 0 },
   paymentMethod:  { type: String, enum: ['ONLINE', 'PAY_AT_LAB'], default: 'ONLINE' },
   reports: [{
     test:   { type: mongoose.Schema.Types.ObjectId, ref: 'Test' },

@@ -1,5 +1,5 @@
 import { verifyJWT } from '../middlewares/authMiddleware.js';
-import { getCatalogTests, quoteCatalogCart } from '../controllers/catalogController.js';
+import { getCatalogTests, quoteCatalogCart, evaluateCouponCode } from '../controllers/catalogController.js';
 
 export const catalogRoutes = async (fastify) => {
   const auth = { preHandler: [verifyJWT] };
@@ -44,4 +44,12 @@ export const catalogRoutes = async (fastify) => {
       },
     },
   }, quoteCatalogCart);
+
+  fastify.get('/coupons/:code/evaluate', {
+    ...auth,
+    schema: {
+      params: { type: 'object', required: ['code'], properties: { code: { type: 'string' } } },
+      querystring: { type: 'object', required: ['amount'], properties: { amount: { type: 'number', minimum: 0 } } },
+    },
+  }, evaluateCouponCode);
 };

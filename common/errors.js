@@ -57,6 +57,8 @@ export const Errors = {
     new DomainError('RESCHEDULE_CUTOFF_PASSED', 409, detail || 'Reschedule cutoff passed'),
   RESCHEDULE_LIMIT_REACHED: (detail) =>
     new DomainError('RESCHEDULE_LIMIT_REACHED', 409, detail || 'No more reschedules allowed'),
+  COUPON_INVALID: (detail) =>
+    new DomainError('COUPON_INVALID', 400, detail || 'Coupon is not valid'),
   CANCELLATION_FEE_APPLICABLE: (detail) =>
     new DomainError('CANCELLATION_FEE_APPLICABLE', 200, detail || 'Cancellation fee applies'),
 };

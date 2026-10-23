@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import Test from '../models/test.js';
+import Coupon from '../models/coupon.js';
 import { toCatalogCode } from '../services/_shared/catalogCode.js';
 
 // Idempotent: only touches tests missing catalogCode / mrp. Returns counts.
@@ -28,10 +29,25 @@ export async function backfillCatalog() {
   return { catalogCode, mrp };
 }
 
+// Idempotent upsert of the launch coupon.
+export async function seedCoupons() {
+  await Coupon.updateOne(
+    { code: 'LABZY50' },
+    { $set: {
+      description: '50% off up to ₹200 on your first booking',
+      percentOff: 50,
+      maxDiscount: 200,
+      firstBookingOnly: true,
+    }, $setOnInsert: { minOrder: 0, isActive: true, validUntil: null } },
+    { upsert: true },
+  );
+}
+
 async function main() {
   await mongoose.connect(process.env.MONGO_URI);
   try {
     const counts = { catalog: await backfillCatalog() };
+    await seedCoupons();
     console.log('Backfill complete:', JSON.stringify(counts));
   } finally {
     await mongoose.disconnect();
