@@ -95,7 +95,7 @@ test('missing auth returns 401', async () => {
 
 test('wrong file type uses a prescription-specific detail', async () => {
   const res = await post(multipart({ file: { name: 'rx.pdf', type: 'application/pdf', data: Buffer.from('%PDF') } }));
-  assert.equal(res.json().detail, 'Please upload a JPG, PNG or HEIC photo of your prescription.');
+  assert.equal(res.json().detail, 'Please upload a JPG, PNG, HEIC or HEIF photo of your prescription.');
 });
 
 test('request without a file part returns 400 VALIDATION_ERROR', async () => {

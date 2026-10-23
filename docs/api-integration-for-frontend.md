@@ -940,14 +940,14 @@ Newest first. `READY` rows are accessible, current (non-replaced) reports with `
 ```
 POST /api/me/prescriptions
 Content-Type: multipart/form-data
-  file: <image/jpeg | image/png | image/heic, up to 10 MB>
+  file: <image/jpeg | image/png | image/heic | image/heif, up to 10 MB>
   note: "Dr. Rao, fasting sample"        // optional text field, silently truncated to 500 chars; send it before `file`
 → 201 { "ticket": { "_id":"...", "state":"OPEN", "category":"PRESCRIPTION" } }
 ```
 
 Creates a `HIGH` priority support ticket (`category: "PRESCRIPTION"`, subject "Prescription uploaded") whose first message carries the image as an attachment; the thread then works like any ticket (2.12). Without a `note` the message reads "Please add the tests on my prescription."
 
-Errors: `415 INVALID_FILE_TYPE` (not jpeg/png/heic; `detail` is patient-friendly), `413 FILE_TOO_LARGE` (over 10 MB), `400 VALIDATION_ERROR` (no file), `401` (not signed in).
+Errors: `415 INVALID_FILE_TYPE` (not jpeg/png/heic/heif; `detail` is "Please upload a JPG, PNG, HEIC or HEIF photo of your prescription."), `413 FILE_TOO_LARGE` (over 10 MB), `400 VALIDATION_ERROR` (no file), `401` (not signed in).
 
 ---
 

@@ -11,7 +11,7 @@ const DEFAULT_NOTE = 'Please add the tests on my prescription.';
 export const uploadPrescription = async ({ userId, fileData }) => {
   if (!fileData) throw Errors.VALIDATION_ERROR('No file uploaded');
   const ext = EXT_BY_MIME[fileData.mimetype];
-  if (!ext) throw Errors.INVALID_FILE_TYPE('Please upload a JPG, PNG or HEIC photo of your prescription.');
+  if (!ext) throw Errors.INVALID_FILE_TYPE('Please upload a JPG, PNG, HEIC or HEIF photo of your prescription.');
 
   const buffer = await readUploadBuffer(fileData, MAX_PRESCRIPTION_SIZE);
   const uri = `prescriptions/${userId}/${Date.now()}.${ext}`;
