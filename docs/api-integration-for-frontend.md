@@ -815,7 +815,7 @@ POST /api/tickets
 → 201 { "ticket": { "_id":"...", "state":"OPEN", "priority":"HIGH", ... } }
 ```
 
-`category` is one of `DELAY`, `REFUND`, `REPORT_ISSUE`, `ASSISTANT_BEHAVIOR`, `PAYMENT`, `SAFETY`, `OTHER`. `bookingId` is optional (omit for general support). `priority` is set automatically server-side — `HIGH` for `REFUND`/`REPORT_ISSUE`/`SAFETY`/`PAYMENT`, `NORMAL` otherwise; don't expose a manual priority picker.
+`category` is one of `DELAY`, `REFUND`, `REPORT_ISSUE`, `ASSISTANT_BEHAVIOR`, `PAYMENT`, `SAFETY`, `PRESCRIPTION`, `OTHER`. `bookingId` is optional (omit for general support). `priority` is set automatically server-side — `HIGH` for `REFUND`/`REPORT_ISSUE`/`SAFETY`/`PAYMENT`, `NORMAL` otherwise; don't expose a manual priority picker.
 
 ```
 GET /api/tickets?state=OPEN&page=1&limit=20        → { "tickets":[...], "total":..., "page":..., "limit":... }
@@ -833,6 +833,110 @@ Errors:
 ```
 
 Render `ticket.messages[]` as a chat-style thread; `fromRole` is `CUSTOMER` or `SUPPORT`. Show the "Reopen" action only when `state === 'RESOLVED'` and it's been under 7 days (you can compute this client-side from `resolvedAt` for UI purposes, but always let the actual button tap hit the endpoint and handle the 400 gracefully in case of clock skew).
+
+### 2.13 Test catalog, cart quote, coupons, patient profile, reports feed, prescriptions
+
+#### Cross-lab test catalog
+
+```
+GET /api/catalog/tests?q=cbc&category=Blood&isPackage=false&homeOnly=true&noFasting=true&maxTat=24&maxPrice=500&sampleType=Blood&sort=rel&lat=12.97&lng=77.64&radius=10000&page=1&limit=20
+→ 200 {
+  "items":[{
+    "code":"CBC", "name":"Complete Blood Count", "category":"Blood", "description":"...",
+    "plainLanguageDescription":"...", "parametersCount":22, "sampleType":"Blood",
+    "fastingHours":0, "isPackage":false,
+    "price":300, "mrp":400,            // cheapest active lab's price
+    "turnaroundHours":12,              // fastest across labs
+    "homeCollection":true,             // true if any lab offers it
+    "labCount":4
+  }],
+  "total":37, "page":1, "pages":2
+}
+```
+
+All query params are optional. `sort` is `rel` (default; most labs first), `low`, `high` or `fast`. `isPackage`, `homeOnly` and `noFasting` are the strings `"true"`/`"false"`. `lat`+`lng` (+ `radius` in metres, default 10000) restrict to labs nearby. `limit` max is 100. `q` also matches search synonyms.
+
+#### Cart quote (which labs can fulfil the whole cart)
+
+```
+POST /api/catalog/quote
+{ "codes":["CBC","LIPID"], "lat":12.97, "lng":77.64, "radius":10000 }     // codes: 1-30 unique; lat/lng/radius optional
+→ 200 {
+  "labs":[{
+    "lab":{ "_id":"...", "name":"...", "address":{...}, "rating":4.6, "totalRatings":120,
+            "certifications":[...], "photos":[...], "offerText":"...", "openingHours":{...},
+            "cancellationCutoffHours":4, "distanceMeters":1800 },        // distanceMeters is null without lat/lng
+    "items":[{ "code":"CBC", "testId":"...", "name":"...", "price":300, "mrp":400,
+               "turnaroundHours":12, "fastingHours":0, "homeCollection":true }],
+    "subtotal":700, "mrpTotal":900, "maxTurnaroundHours":24,
+    "homeCollectionAvailable":true, "homeCollectionFee":50, "homeCollectionWaiverAbove":500
+  }],
+  "missing":[]          // codes no nearby lab offers
+}
+```
+
+Only labs that carry **every** code are returned, cheapest `subtotal` first. Use `items[].testId` as `testIds` when creating the booking.
+
+#### Evaluate a coupon
+
+```
+GET /api/coupons/:code/evaluate?amount=700
+→ 200 { "coupon": { "code":"FIRST100", "discount":100, "description":"Rs 100 off your first booking" } }
+→ 400 COUPON_INVALID   // `detail` is a user-facing message: not found, expired, minimum order not met, first-booking only
+```
+
+`code` is case-insensitive. `amount` is the cart subtotal. `discount` is already capped at `amount`.
+
+#### Booking with a coupon
+
+`POST /api/bookings` (see 2.5) accepts an optional `couponCode`. The server re-evaluates it against the cart subtotal (a bad coupon fails the booking with `400 COUPON_INVALID`) and the booking response carries `couponCode` and `discountAmount`. `totalAmount = subtotal - discountAmount + homeCollectionFee`.
+
+#### Profile fields and dependent age
+
+```
+PUT /api/profile
+{ "name":"Asha Rao", "gender":"female", "birthDate":"1992-04-15", "age":34,
+  "weight":58, "height":160, "bloodGroup":"B+", "registrationStep":2 }      // every field optional
+→ 200 { "user": {...} }
+```
+
+`age` 1-120 (integer), `weight` 20-200 (kg), `height` 100-250 (cm), `bloodGroup` one of `A+ A- B+ B- O+ O- AB+ AB- unknown`, `registrationStep` 1 or 2.
+
+`POST /api/me/dependents` and `PUT /api/me/dependents/:id` also accept `age` (integer 0-120) alongside `name`, `relation`, `gender`, `birthDate`.
+
+#### Reports feed (Reports tab)
+
+```
+GET /api/me/reports?patient=all          // patient: "all" (default) | "self" | <dependentId>
+→ 200 { "reports":[{
+  "_id":"<reportId>" | "pending-<bookingId>",
+  "bookingId":"...", "bookingCode":"LBZ-48291",
+  "lab":{ "_id":"...", "name":"..." },
+  "patient":{ "name":"Asha", "relation":"mother", "dependentId":"..." | null },
+  "status":"READY" | "PROCESSING",
+  "title":"Lipid Panel",
+  "testIds":["..."], "catalogCodes":["LIPID"],
+  "issuedAt":"..." | null, "expectedAt":"..." | null,
+  "parameters":[{ "name":"LDL", "value":"128", "unit":"mg/dL", "flag":"HIGH" }],
+  "remindRetestAt":null
+}] }
+```
+
+Newest first. `READY` rows are accessible, current (non-replaced) reports with `parameters`. `PROCESSING` rows are synthetic (`_id` starts with `pending-`) for collected/processing bookings whose tests have no report yet, with `expectedAt` as the ETA. Cancelled bookings are excluded.
+
+#### Upload a prescription
+
+```
+POST /api/me/prescriptions
+Content-Type: multipart/form-data
+  file: <image/jpeg | image/png | image/heic, up to 10 MB>
+  note: "Dr. Rao, fasting sample"        // optional text field; send it before `file`
+→ 201 { "ticket": { "_id":"...", "state":"OPEN", "category":"PRESCRIPTION" } }
+```
+
+Creates a `HIGH` priority support ticket (`category: "PRESCRIPTION"`, subject "Prescription uploaded") whose first message carries the image as an attachment; the thread then works like any ticket (2.12). Without a `note` the message reads "Please add the tests on my prescription."
+
+Errors: `415 INVALID_FILE_TYPE` (not jpeg/png/heic), `413 FILE_TOO_LARGE` (over 10 MB), `400 VALIDATION_ERROR` (no file), `401` (not signed in).
 
 ---
 

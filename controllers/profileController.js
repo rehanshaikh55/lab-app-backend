@@ -1,6 +1,7 @@
 import * as profileService from '../services/profileService.js';
 import * as discoveryService from '../services/discoveryService.js';
 import * as myReportsService from '../services/myReportsService.js';
+import * as prescriptionService from '../services/prescriptionService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const getProfile = asyncHandler(async (req, reply) =>
@@ -95,3 +96,9 @@ export const listMyReports = asyncHandler(async (req, reply) =>
   reply.code(200).send({
     reports: await myReportsService.listMyReports({ userId: req.user._id, patient: req.query.patient }),
   }));
+
+export const uploadPrescription = asyncHandler(async (req, reply) => {
+  const fileData = await req.file();
+  const ticket = await prescriptionService.uploadPrescription({ userId: req.user._id, fileData });
+  return reply.code(201).send({ ticket });
+});

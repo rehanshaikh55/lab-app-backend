@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import mongoose from 'mongoose';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
 import { connectDB } from "./config/connect.js";
 import { PORT, NODE_ENV, FRONTEND_URL } from "./config/env.js";
 import { assertRequiredEnv } from "./config/env.js";
@@ -22,6 +23,7 @@ export const buildApp = async ({ withAdmin = true } = {}) => {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
   await app.register(websocket);
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.get('/health', async () => ({
     status: 'ok',

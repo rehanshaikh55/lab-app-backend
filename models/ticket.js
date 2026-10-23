@@ -5,7 +5,7 @@ const ticketSchema = new mongoose.Schema({
   booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
   category: {
     type: String, required: true,
-    enum: ['DELAY', 'REFUND', 'REPORT_ISSUE', 'ASSISTANT_BEHAVIOR', 'PAYMENT', 'SAFETY', 'OTHER'],
+    enum: ['DELAY', 'REFUND', 'REPORT_ISSUE', 'ASSISTANT_BEHAVIOR', 'PAYMENT', 'SAFETY', 'PRESCRIPTION', 'OTHER'],
   },
   priority: { type: String, enum: ['NORMAL', 'HIGH'], default: 'NORMAL' },
   state:    { type: String, enum: ['OPEN', 'IN_PROGRESS', 'RESOLVED'], default: 'OPEN' },

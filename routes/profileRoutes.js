@@ -16,6 +16,7 @@ import {
   recordSearch,
   watchLabsNearby,
   listMyReports,
+  uploadPrescription,
 } from '../controllers/profileController.js';
 
 const NAME_SCHEMA = { type: 'string', minLength: 2, maxLength: 100, pattern: "^[A-Za-z][A-Za-z '\\-]{1,99}$" };
@@ -198,4 +199,7 @@ export const profileRoutes = async (fastify) => {
       },
     },
   }, listMyReports);
+
+  // Prescription upload (multipart: file + optional note) -> HIGH priority ticket
+  fastify.post('/me/prescriptions', auth, uploadPrescription);
 };
