@@ -6,6 +6,7 @@ import Lab from '../models/lab.js';
 import Test from '../models/test.js';
 import Booking from '../models/booking.js';
 import Coupon from '../models/coupon.js';
+import SlotCapacity from '../models/slotCapacity.js';
 import { seedCoupons } from '../scripts/backfillPatientRedesign.js';
 import bcrypt from 'bcryptjs';
 
@@ -25,7 +26,7 @@ before(async () => { app = await setupTestApp(); });
 after(async () => { await teardownTestApp(app); });
 
 beforeEach(async () => {
-  await Promise.all([User.deleteMany({}), Lab.deleteMany({}), Test.deleteMany({}), Booking.deleteMany({}), Coupon.deleteMany({})]);
+  await Promise.all([User.deleteMany({}), Lab.deleteMany({}), Test.deleteMany({}), Booking.deleteMany({}), Coupon.deleteMany({}), SlotCapacity.deleteMany({})]);
   const owner = await User.create({ name:'Owner', email:'o@x.com', roles:['LAB_OWNER'], passwordHash: await bcrypt.hash('pass123',12) });
   lab = await Lab.create({
     owner: owner._id, name:'Lab A',
@@ -105,4 +106,19 @@ test('invalid coupon on POST /bookings does not hold a slot', async () => {
   const res = await app.inject({ method:'POST', url:'/api/bookings', headers: auth(), payload });
   assert.equal(res.statusCode, 400);
   assert.equal(await Booking.countDocuments({}), 0);
+  const held = await SlotCapacity.find({ lab: lab._id, slotStart: '11:00' });
+  assert.equal(held.reduce((n, c) => n + c.count, 0), 0);
+});
+
+test('home collection fee waiver uses the pre-discount subtotal', async () => {
+  await Lab.updateOne({ _id: lab._id }, { policy: { homeCollectionFee: 100, homeCollectionWaiverAbove: 700 } });
+  const res = await app.inject({ method:'POST', url:'/api/bookings', headers: auth(), payload: {
+    labId: lab._id.toString(), testIds:[t1._id.toString(), t2._id.toString()],
+    scheduledDate: '2026-06-04', slot:{ start:'10:00' }, collectionType:'HOME', couponCode: 'LABZY50',
+  } });
+  assert.equal(res.statusCode, 201);
+  const b = res.json().booking;
+  assert.equal(b.homeCollectionFee, 0);
+  assert.equal(b.discountAmount, 200);
+  assert.equal(b.totalAmount, 648);
 });
