@@ -202,3 +202,34 @@ test('POST /bookings/:id/refund on someone else\'s booking throws BOOKING_NOT_FO
   assert.equal(res.statusCode, 404);
   assert.equal(res.json().type, 'https://labzy.in/errors/BOOKING_NOT_FOUND');
 });
+
+test('createIntent rejects a booking switched to PAY_AT_LAB', async () => {
+  const booking = await createBooking(token, { testIds: [testDoc._id.toString()], slotStart: '15:00' });
+  await Booking.updateOne({ _id: booking._id }, { paymentMethod: 'PAY_AT_LAB' });
+
+  const res = await app.inject({
+    method:'POST', url:`/api/bookings/${booking._id}/payment-intent`, headers:{ authorization:`Bearer ${token}` },
+  });
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.json().detail, 'This booking is set to pay at collection.');
+  assert.equal(await Transaction.countDocuments({ booking: booking._id }), 0);
+});
+
+test('a late capture on a booking switched to PAY_AT_LAB confirms it and marks it ONLINE', async () => {
+  const booking = await createBooking(token, { testIds: [testDoc._id.toString()], slotStart: '15:30' });
+  const intent = await app.inject({
+    method:'POST', url:`/api/bookings/${booking._id}/payment-intent`, headers:{ authorization:`Bearer ${token}` },
+  });
+  assert.equal(intent.statusCode, 200);
+  await Booking.updateOne({ _id: booking._id }, { paymentMethod: 'PAY_AT_LAB' });
+
+  const { transactionId, providerOrderId } = intent.json();
+  const webhook = await app.inject({
+    method:'POST', url:'/api/payments/webhook', payload: capturedPayload(providerOrderId, `pay_${transactionId}`),
+  });
+  assert.equal(webhook.statusCode, 200);
+
+  const reloaded = await Booking.findById(booking._id);
+  assert.equal(reloaded.status, 'CONFIRMED');
+  assert.equal(reloaded.paymentMethod, 'ONLINE');
+});
