@@ -65,3 +65,12 @@ test('POST /auth/consents persists additional consents post-signup', async () =>
   assert.equal(marketing.statusCode, 200);
   assert.equal(marketing.json().recorded, 1);
 });
+
+test('signup rejects names that break the name rule (e.g. "K. Ramesh")', async () => {
+  const res = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { name: 'K. Ramesh', email: 'k@x.com', password: 'pass1234',
+      birthDate: '1990-01-01', consents: fullConsent },
+  });
+  assert.equal(res.statusCode, 400);
+});

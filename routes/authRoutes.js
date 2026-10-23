@@ -1,5 +1,6 @@
 import { register, login, refresh, logout, forgotPassword, resetPassword, consents } from '../controllers/authController.js';
 import { verifyJWT } from '../middlewares/authMiddleware.js';
+import { NAME_SCHEMA } from './_schemas.js';
 
 export const authRoutes = async (fastify) => {
   fastify.post('/auth/register', {
@@ -8,7 +9,7 @@ export const authRoutes = async (fastify) => {
         type: 'object',
         required: ['name', 'email', 'password'],
         properties: {
-          name:      { type: 'string', minLength: 2 },
+          name:      NAME_SCHEMA,
           email:     { type: 'string', format: 'email' },
           password:  { type: 'string', minLength: 6 },
           phone:     { type: 'string' },
