@@ -1,3 +1,4 @@
+import { registerMultipart } from './_multipart.js';
 import { verifyJWT } from '../middlewares/authMiddleware.js';
 import {
   getProfile,
@@ -22,6 +23,7 @@ import {
 import { NAME_SCHEMA } from './_schemas.js';
 
 export const profileRoutes = async (fastify) => {
+  await registerMultipart(fastify);
   const auth = { preHandler: [verifyJWT] };
 
   fastify.get('/me', auth, getProfile);

@@ -1,3 +1,4 @@
+import { registerMultipart } from './_multipart.js';
 import { verifyJWT } from '../middlewares/authMiddleware.js';
 import { requireRoles } from '../middlewares/rbacMiddleware.js';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../controllers/partnerController.js';
 
 export const partnerRoutes = async (fastify) => {
+  await registerMultipart(fastify);
   const ownerAuth = { preHandler: [verifyJWT, requireRoles('LAB_OWNER')] };
 
   fastify.get('/partner/today',           ownerAuth, getToday);
