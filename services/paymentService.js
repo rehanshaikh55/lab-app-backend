@@ -71,7 +71,15 @@ export const createIntent = async ({ user, bookingId }) => {
 };
 
 const verifySignature = (rawBody, signature) => {
-  if (usingStub() && !RAZORPAY_WEBHOOK_SECRET) return true; // dev: allow stub webhooks
+  if (usingStub() && !RAZORPAY_WEBHOOK_SECRET) {
+    // Stub mode (no Razorpay keys). In production an unsigned webhook could forge
+    // payments, so refuse unless explicitly opted in.
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.PAYMENTS_ALLOW_UNSIGNED_STUB_WEBHOOKS !== 'true'
+    ) return false;
+    return true; // dev/test: allow stub webhooks
+  }
   if (!RAZORPAY_WEBHOOK_SECRET) return false;
   const expected = crypto
     .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
