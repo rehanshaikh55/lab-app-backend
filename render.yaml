@@ -1,0 +1,58 @@
+# Render Blueprint: one Node web service talking to MongoDB Atlas.
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repo.
+# Step-by-step guide: RENDER_DEPLOY.md
+services:
+  - type: web
+    name: labzy-backend
+    runtime: node
+    region: singapore
+    # free sleeps after 15 min idle (scheduled jobs and live notifications stop
+    # until the next request). Use "starter" for an always-on server.
+    plan: free
+    branch: main
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: DB_NAME
+        value: labzy
+
+      # Secrets Render generates for you
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: COOKIE_PASSWORD
+        generateValue: true
+
+      # You fill these in the dashboard (sync: false = prompted on first deploy)
+      - key: MONGO_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # Firebase: upload the service-account JSON as a Secret File named
+      # firebase-service-account.json (Environment -> Secret Files).
+      - key: FIREBASE_SERVICE_ACCOUNT_PATH
+        value: /etc/secrets/firebase-service-account.json
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: FCM_ENABLED
+        value: "true"
