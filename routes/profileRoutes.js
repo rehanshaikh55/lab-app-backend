@@ -22,6 +22,15 @@ import {
 
 import { NAME_SCHEMA } from './_schemas.js';
 
+const coordinatesSchema = {
+  type: 'array', minItems: 2, maxItems: 2,
+  items: [
+    { type: 'number', minimum: -180, maximum: 180 },
+    { type: 'number', minimum: -90, maximum: 90 },
+  ],
+  additionalItems: false,
+};
+
 export const profileRoutes = async (fastify) => {
   await registerMultipart(fastify);
   const auth = { preHandler: [verifyJWT] };
@@ -64,6 +73,7 @@ export const profileRoutes = async (fastify) => {
           state:   { type: 'string' },
           zipCode: { type: 'string' },
           country: { type: 'string' },
+          coordinates: coordinatesSchema,
         },
         additionalProperties: false,
       },
@@ -84,6 +94,7 @@ export const profileRoutes = async (fastify) => {
           state:   { type: 'string' },
           zipCode: { type: 'string' },
           country: { type: 'string' },
+          coordinates: { anyOf: [coordinatesSchema, { type: 'null' }] },
         },
         additionalProperties: false,
       },
@@ -101,10 +112,11 @@ export const profileRoutes = async (fastify) => {
       body: {
         type: 'object',
         properties: {
-          address:   { type: 'string' },
-          latitude:  { type: 'number' },
-          longitude: { type: 'number' },
+          address:   { type: 'string', minLength: 1 },
+          latitude:  { type: 'number', minimum: -90, maximum: 90 },
+          longitude: { type: 'number', minimum: -180, maximum: 180 },
         },
+        anyOf: [{ required: ['address'] }, { required: ['latitude', 'longitude'] }],
         additionalProperties: false,
       },
     },

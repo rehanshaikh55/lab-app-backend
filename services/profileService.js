@@ -44,8 +44,8 @@ export const updateProfile = async ({ userId, body }) => {
 export const addAddress = async ({ userId, body }) => {
   const user = await User.findById(userId);
   if (!user) throw Errors.NOT_FOUND('User');
-  const { label, line1, line2, city, state, zipCode, country } = body;
-  user.addresses.push({ label, line1, line2, city, state, zipCode, country: country || 'India' });
+  const { label, line1, line2, city, state, zipCode, country, coordinates } = body;
+  user.addresses.push({ label, line1, line2, city, state, zipCode, country: country || 'India', coordinates });
   await user.save();
   return user.addresses;
 };
@@ -55,8 +55,8 @@ export const updateAddress = async ({ userId, addressId, body }) => {
   if (!user) throw Errors.NOT_FOUND('User');
   const addr = user.addresses.id(addressId);
   if (!addr) throw Errors.NOT_FOUND('Address');
-  for (const k of ['label', 'line1', 'line2', 'city', 'state', 'zipCode', 'country']) {
-    if (body[k] !== undefined) addr[k] = body[k];
+  for (const k of ['label', 'line1', 'line2', 'city', 'state', 'zipCode', 'country', 'coordinates']) {
+    if (body[k] !== undefined) addr[k] = k === 'coordinates' && body[k] === null ? [] : body[k];
   }
   await user.save();
   return user.addresses;
@@ -71,18 +71,26 @@ export const deleteAddress = async ({ userId, addressId }) => {
 };
 
 export const updateLocation = async ({ userId, address, latitude, longitude }) => {
-  let coords = [longitude || 0, latitude || 0];
+  const hasCoords = latitude !== undefined && longitude !== undefined;
+  let coords = [longitude ?? 0, latitude ?? 0];
   let resolvedAddress = address;
-  if (address && !latitude) {
+  let addressDetails = null;
+  if (address && !hasCoords) {
     try {
       const geo = await geocodeAddress(address);
       coords = geo.coordinates || coords;
       resolvedAddress = geo.address || address;
     } catch { /* keep originals */ }
-  } else if (latitude && longitude && !address) {
+  } else if (hasCoords && !address) {
     try {
       const geo = await reverseGeocode(latitude, longitude);
       resolvedAddress = geo.address || `${latitude},${longitude}`;
+      if (geo.city || geo.state || geo.zipCode) {
+        addressDetails = {
+          line1: geo.address || '', city: geo.city || '', state: geo.state || '',
+          zipCode: geo.zipCode || '', country: geo.country || 'India',
+        };
+      }
     } catch {
       resolvedAddress = `${latitude},${longitude}`;
     }
@@ -92,7 +100,7 @@ export const updateLocation = async ({ userId, address, latitude, longitude }) =
     { location: { type: 'Point', coordinates: coords } },
     { new: true },
   ).select(SAFE_SELECT);
-  return { user, resolvedAddress };
+  return { user, resolvedAddress, addressDetails };
 };
 
 // Dependents (Phase 2 Task 18)

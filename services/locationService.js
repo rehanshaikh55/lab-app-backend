@@ -65,13 +65,13 @@ export const geocodeAddress = async (address) => {
 export const reverseGeocode = async (latitude, longitude) => {
   try {
     if (!GEOCODING_API_KEY) {
-      console.warn('Google Maps API key not provided, using mock data');
+      console.warn('Google Maps API key not provided; reverse address lookup is unavailable');
       return {
         coordinates: [longitude, latitude],
         address: `${latitude}, ${longitude}`,
-        city: 'Unknown City',
-        state: 'Unknown State',
-        zipCode: '000000',
+        city: null,
+        state: null,
+        zipCode: null,
         country: 'India'
       };
     }
@@ -106,7 +106,9 @@ export const reverseGeocode = async (latitude, longitude) => {
             reject(error);
           }
         });
-      }).on('error', reject);
+      }).on('error', reject).setTimeout(10000, function () {
+        this.destroy(new Error('Address lookup timed out'));
+      });
     });
   } catch (error) {
     throw new Error(`Reverse geocoding failed: ${error.message}`);
