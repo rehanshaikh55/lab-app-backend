@@ -13,6 +13,7 @@ import { contentRoutes } from "./contentRoutes.js";
 import { ticketRoutes } from "./ticketRoutes.js";
 import { catalogRoutes } from "./catalogRoutes.js";
 import { wsRoutes } from "./wsRoutes.js";
+import { resetPasswordPageRoutes } from "./resetPasswordPage.js";
 
 const prefix = "/api";
 
@@ -33,4 +34,6 @@ export const registerRoutes = async (fastify) => {
   fastify.register(catalogRoutes,      { prefix });
   // wsRoutes intentionally registered at the root (no /api prefix)
   fastify.register(wsRoutes);
+  // Web page behind the password-reset email link (root, no /api prefix)
+  fastify.register(resetPasswordPageRoutes);
 };

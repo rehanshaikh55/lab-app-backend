@@ -155,15 +155,22 @@ export const logout = async (user, refreshToken) => {
   return { message: 'Logged out successfully' };
 };
 
-export const forgotPassword = async ({ email }, log) => {
+// The reset page is served by this backend (routes/resetPasswordPage.js). Never
+// derive this from request headers: a forged Host/X-Forwarded-Host would send
+// victims a link (and their token) to an attacker's site.
+const publicBaseUrl = () =>
+  (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || FRONTEND_URL).replace(/\/+$/, '');
+
+export const forgotPassword = async ({ email }, log, transporterOverride) => {
   const user = await User.findOne({ email });
   if (user) {
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetToken = resetToken;
     user.resetTokenExpiry = Date.now() + 3600000;
     await user.save();
-    const resetURL = `${FRONTEND_URL}/reset-password/${resetToken}`;
-    const transporter = getTransporter();
+    const resetURL = `${publicBaseUrl()}/reset-password/${resetToken}`;
+    const transporter = transporterOverride || getTransporter();
+    if (!transporter) log?.warn('Password reset requested but EMAIL_USER/EMAIL_PASS are not set; no email sent');
     if (transporter) {
       try {
         await transporter.sendMail({
