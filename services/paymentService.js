@@ -11,18 +11,16 @@ import { recordEvent } from './_shared/events.js';
 
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
-const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || RAZORPAY_KEY_SECRET;
+// Razorpay signs webhooks with the secret set on the webhook in its dashboard,
+// which is separate from the API key secret.
+const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
 
 const usingStub = () => !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET;
 
 const createRazorpayOrder = async ({ amount, currency, receipt }) => {
-  // Lazy-require to avoid hard dependency in test environments without the SDK.
-  let Razorpay;
-  try {
-    ({ default: Razorpay } = await import('razorpay'));
-  } catch {
-    return { id: `mock_order_${crypto.randomBytes(8).toString('hex')}` };
-  }
+  // Only reached with real keys: a missing SDK must fail loudly, never hand
+  // checkout a fake order id.
+  const { default: Razorpay } = await import('razorpay');
   const rzp = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET });
   return rzp.orders.create({ amount: amount * 100, currency, receipt });
 };
@@ -85,7 +83,9 @@ const verifySignature = (rawBody, signature) => {
     .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
     .update(rawBody)
     .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature || ''));
+  const given = Buffer.from(signature || '');
+  if (given.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), given);
 };
 
 export const handleRazorpayWebhook = async ({ rawBody, signature, payload }) => {

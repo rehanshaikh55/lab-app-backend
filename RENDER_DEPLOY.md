@@ -53,7 +53,17 @@ WS_BASE_URL=wss://labzy-backend.onrender.com
 
 Rebuild the app (react-native-config reads `.env` at build time).
 
-Razorpay webhook URL (Razorpay dashboard): `https://labzy-backend.onrender.com/api/payments/webhook`.
+### Razorpay webhook (required for online payments)
+
+Bookings are marked paid only when Razorpay's webhook reaches the backend.
+
+1. Razorpay dashboard (Test Mode for test keys) → **Account & Settings → Webhooks → Add New Webhook**.
+2. URL: `https://labzy-backend.onrender.com/api/payments/webhook`
+3. Secret: make up a long random string. Put the **same** string in Render as `RAZORPAY_WEBHOOK_SECRET`.
+   This is not your API key secret.
+4. Events: `payment.captured`, `payment.failed`, `order.paid`.
+
+Test cards and UPI IDs for Test Mode are listed in Razorpay's docs ("Test Card Details").
 
 
 ## 5. Custom domain (optional)
