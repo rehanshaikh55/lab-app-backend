@@ -53,6 +53,18 @@ WS_BASE_URL=wss://labzy-backend.onrender.com
 
 Rebuild the app (react-native-config reads `.env` at build time).
 
+### Email (password reset)
+
+Render's free plan blocks outbound SMTP, so Gmail SMTP doesn't work there. Use Brevo (free, 300 emails/day):
+
+1. Sign up at brevo.com.
+2. **Senders, Domains & Dedicated IPs → Senders → Add a sender** with your Gmail address, then click the
+   verification link Brevo emails you.
+3. **SMTP & API → API Keys → Generate a new API key**.
+4. In Render → Environment: `BREVO_API_KEY` = that key, `EMAIL_FROM` = the verified sender address.
+
+Without a domain of your own, some reset emails may land in spam.
+
 ### Razorpay webhook (required for online payments)
 
 Bookings are marked paid only when Razorpay's webhook reaches the backend.

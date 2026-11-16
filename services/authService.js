@@ -28,13 +28,36 @@ const ageYearsFrom = (birthDate) => {
   return ageMs / (365.25 * 24 * 3600 * 1000);
 };
 
+// Brevo's HTTPS API, for hosts that block outbound SMTP (Render's free plan
+// blocks ports 25/465/587, so Gmail SMTP hangs there).
+const brevoTransport = (apiKey) => ({
+  sendMail: async ({ to, subject, html }) => {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': apiKey, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        sender: { email: process.env.EMAIL_FROM || EMAIL_USER, name: 'Labzy' },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`Brevo send failed: ${res.status} ${await res.text().catch(() => '')}`);
+  },
+});
+
 let _transporter;
 const getTransporter = () => {
+  if (process.env.BREVO_API_KEY) return brevoTransport(process.env.BREVO_API_KEY);
   if (_transporter) return _transporter;
   if (EMAIL_USER && EMAIL_PASS) {
     _transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
   }
   return _transporter;
@@ -113,7 +136,7 @@ export const recordConsents = async ({ userId, consents, ip, ua }) => {
 export const login = async ({ email, password, deviceId, deviceLabel, ip, ua }) => {
   const user = await User.findOne({ email });
   if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
-    throw Errors.UNAUTHORIZED();
+    throw Errors.INVALID_CREDENTIALS();
   }
   user.lastLoginAt = new Date();
   // issueTokens no longer persists the user doc (it only writes Session rows now),
@@ -170,18 +193,19 @@ export const forgotPassword = async ({ email }, log, transporterOverride) => {
     await user.save();
     const resetURL = `${publicBaseUrl()}/reset-password/${resetToken}`;
     const transporter = transporterOverride || getTransporter();
-    if (!transporter) log?.warn('Password reset requested but EMAIL_USER/EMAIL_PASS are not set; no email sent');
+    if (!transporter) log?.warn('Password reset requested but no email provider is configured (BREVO_API_KEY or EMAIL_USER/EMAIL_PASS); no email sent');
     if (transporter) {
-      try {
-        await transporter.sendMail({
-          from: EMAIL_USER,
+      // Fire-and-forget: the response must not wait on the mail provider, or a
+      // slow/blocked provider turns into a client timeout.
+      Promise.resolve()
+        .then(() => transporter.sendMail({
+          from: process.env.EMAIL_FROM || EMAIL_USER,
           to: user.email,
           subject: 'Password Reset — Labzy',
           html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link expires in 1 hour.</p>`,
-        });
-      } catch (e) {
-        log?.error({ err: e }, 'Failed to send reset email');
-      }
+        }))
+        .then(() => log?.info({ to: user.email }, 'Password reset email sent'))
+        .catch((e) => log?.error({ err: e }, 'Failed to send reset email'));
     }
   }
   return { message: 'If that email exists, a reset link was sent' };
