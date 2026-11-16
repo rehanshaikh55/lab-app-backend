@@ -45,6 +45,10 @@ export const Errors = {
     new DomainError('NOT_FOUND', 404, `${resource || 'Resource'} not found`, instance),
   UNAUTHORIZED: () =>
     new DomainError('UNAUTHORIZED', 401, 'Authentication required'),
+  // Same message for unknown email and wrong password, so login can't be used
+  // to discover which emails have accounts.
+  INVALID_CREDENTIALS: () =>
+    new DomainError('INVALID_CREDENTIALS', 401, 'Incorrect email or password'),
   FORBIDDEN: () =>
     new DomainError('FORBIDDEN', 403, 'Insufficient permissions'),
   CONFLICT: (detail) =>
