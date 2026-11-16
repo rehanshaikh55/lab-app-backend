@@ -13,6 +13,9 @@ import { DomainError } from "./common/errors.js";
 
 export const buildApp = async ({ withAdmin = true } = {}) => {
   const app = Fastify({
+    // Render (and most hosts) terminate HTTPS at a proxy; trust its
+    // X-Forwarded-Proto so secure cookies (AdminJS session) are sent.
+    trustProxy: true,
     logger: { level: NODE_ENV === 'production' ? 'info' : 'debug' },
   });
 
