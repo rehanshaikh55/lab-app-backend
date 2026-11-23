@@ -8,6 +8,7 @@ import { readUploadBuffer } from './_shared/readUpload.js';
 import { assertTransition, buildTimeline } from './_shared/transitions.js';
 import { recordEvent } from './_shared/events.js';
 import { releaseSlot } from './slotCapacityService.js';
+import { refundCancelledBooking } from './refundService.js';
 import { linkReport as linkReportDoc } from './reportService.js';
 import { notifyBookingStatus } from './notificationService.js';
 
@@ -117,6 +118,7 @@ export const rejectBooking = async ({ userId, bookingId, reason }) => {
   await booking.save();
   await recordEvent({ booking, fromStatus, toStatus: 'CANCELLED', actorType: 'LAB_OWNER', actorId: userId, reason: booking.cancelReason });
   await releaseSlot({ labId: booking.lab, scheduledDate: booking.scheduledDate, slotStart: booking.slot.start });
+  await refundCancelledBooking({ booking, reason: 'cancelled by lab' });
   notifyBookingStatus(booking).catch(() => {});
   return withTimeline(booking);
 };

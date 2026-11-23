@@ -6,7 +6,8 @@ import { storage } from '../integrations/storage/storage.js';
 import { Errors } from '../common/errors.js';
 import { assertTransition, buildTimeline } from './_shared/transitions.js';
 import { recordEvent } from './_shared/events.js';
-import { addMinutes, weekdayName } from './_shared/slotTime.js';
+import { addMinutes, weekdayName, dayKey } from './_shared/slotTime.js';
+import { refundCancelledBooking } from './refundService.js';
 import { reserveSlot, releaseSlot } from './slotCapacityService.js';
 import { notifyBookingStatus } from './notificationService.js';
 import { generateCode } from './bookingCodeService.js';
@@ -14,6 +15,14 @@ import { evaluateCoupon } from './couponService.js';
 import { connect as connectMaskedCall } from './maskedCallService.js';
 
 const HOLD_MS = 10 * 60 * 1000; // PRD §6.4 FR-5
+
+// Slot times are Indian wall-clock times on the booking's date; servers may run in UTC.
+const IST_OFFSET_MS = 330 * 60 * 1000;
+const slotStartsAt = (booking) => {
+  const [y, mo, d] = dayKey(booking.scheduledDate).split('-').map(Number);
+  const [h, m] = booking.slot.start.split(':').map(Number);
+  return Date.UTC(y, mo - 1, d, h, m) - IST_OFFSET_MS;
+};
 
 const withTimeline = (b) => {
   if (!b) return b;
@@ -166,24 +175,26 @@ export const cancelBooking = async ({ user, bookingId, reason }) => {
   if (!booking || booking.user.toString() !== user._id.toString()) {
     throw Errors.BOOKING_NOT_FOUND(`/bookings/${bookingId}`);
   }
+  if (booking.status === 'COLLECTED') {
+    // The sample is with the lab; refunds after collection are handled by support.
+    throw Errors.INVALID_BOOKING_TRANSITION(
+      'Your sample has already been collected, so this booking can no longer be cancelled in the app. Please contact support.');
+  }
   assertTransition(booking.status, 'CANCELLED', `Cannot cancel a ${booking.status} booking`);
   const fromStatus = booking.status;
   booking.status = 'CANCELLED';
   booking.cancelBy = 'CUSTOMER';
   booking.cancelReason = reason || 'Cancelled by customer';
 
-  // PRD §6.4 FR-9: cancelling inside the lab's cancellation cutoff carries a fee. No
-  // charge/refund service exists yet in this task's scope (see CANCELLATION_FEE_APPLICABLE in
-  // common/errors.js, reserved for that later task), so this only annotates cancelReason as a
-  // safe, non-blocking record of fee applicability rather than enforcing/charging it.
+  // PRD §6.4 FR-9: cancelling inside the lab's cancellation cutoff carries a fee, kept back
+  // from the refund.
   const lab = await Lab.findById(booking.lab).select('policy');
+  let fee = 0;
   const cancellationFee = lab?.policy?.cancellationFee || 0;
   if (cancellationFee > 0) {
     const cutoffHours = lab?.policy?.cancellationCutoffHours ?? 4;
-    const slotMoment = new Date(booking.scheduledDate);
-    const [h, m] = booking.slot.start.split(':').map(Number);
-    slotMoment.setHours(h, m, 0, 0);
-    if (slotMoment.getTime() - Date.now() < cutoffHours * 3600 * 1000) {
+    if (slotStartsAt(booking) - Date.now() < cutoffHours * 3600 * 1000) {
+      fee = cancellationFee;
       booking.cancelReason += ` (cancellation fee of ${cancellationFee} applies — inside ${cutoffHours}h cutoff)`;
     }
   }
@@ -191,6 +202,7 @@ export const cancelBooking = async ({ user, bookingId, reason }) => {
   await booking.save();
   await recordEvent({ booking, fromStatus, toStatus: 'CANCELLED', actorType: 'CUSTOMER', actorId: user._id, reason: booking.cancelReason });
   await releaseSlot({ labId: booking.lab, scheduledDate: booking.scheduledDate, slotStart: booking.slot.start });
+  await refundCancelledBooking({ booking, fee, reason: 'cancelled by customer' });
   notifyBookingStatus(booking).catch(() => {});
   return withTimeline(booking);
 };

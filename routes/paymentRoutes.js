@@ -1,4 +1,5 @@
 import { verifyJWT } from '../middlewares/authMiddleware.js';
+import { requireRoles } from '../middlewares/rbacMiddleware.js';
 import { razorpayWebhook, listPayments, getInvoice, requestRefund } from '../controllers/paymentController.js';
 
 export const paymentRoutes = async (fastify) => {
@@ -13,8 +14,9 @@ export const paymentRoutes = async (fastify) => {
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, getInvoice);
 
+  // Manual refunds move real money, so admins only. Customers get refunds by cancelling.
   fastify.post('/bookings/:id/refund', {
-    ...auth,
+    preHandler: [verifyJWT, requireRoles('ADMIN')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       body: {

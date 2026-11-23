@@ -3,6 +3,7 @@ import Lab from '../../models/lab.js';
 import { releaseSlot } from '../../services/slotCapacityService.js';
 import { notifyBookingStatus } from '../../services/notificationService.js';
 import { recordEvent } from '../../services/_shared/events.js';
+import { refundCancelledBooking } from '../../services/refundService.js';
 
 // PRD §6.4 FR-10: if a lab doesn't respond to a PENDING booking within its response SLA, auto
 // cancel with full refund (slot release). `createdAt <= now - 1h` is just a cheap Mongo-level
@@ -27,6 +28,7 @@ export const runLabResponseSlaSweep = async ({ now = new Date(), log } = {}) => 
     await releaseSlot({ labId: b.lab, scheduledDate: b.scheduledDate, slotStart: b.slot.start });
     await recordEvent({ booking: b, fromStatus, toStatus: 'CANCELLED', actorType: 'SYSTEM',
       reason: 'lab-response-sla' });
+    await refundCancelledBooking({ booking: b, reason: 'lab did not respond in time' });
     notifyBookingStatus(b).catch(() => {});
     cancelled += 1;
   }

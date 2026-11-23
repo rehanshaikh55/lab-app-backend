@@ -6,7 +6,8 @@ const refundSchema = new mongoose.Schema({
   amount:      { type: Number, required: true },
   reason:      String,
   state: { type: String, enum: ['INITIATED', 'PROCESSED', 'CREDITED', 'FAILED'], default: 'INITIATED' },
-  providerRefundId: String,
+  providerRefundId: { type: String, index: true },
+  failureReason:    String,
   expectedAt:       Date,
 }, { timestamps: true });
 

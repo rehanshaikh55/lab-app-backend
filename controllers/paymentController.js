@@ -40,11 +40,11 @@ export const getInvoice = asyncHandler(async (req, reply) => {
 });
 
 export const requestRefund = asyncHandler(async (req, reply) => {
+  // Admin-only route (see paymentRoutes.js), so any booking may be refunded.
   const booking = await Booking.findById(req.params.id);
-  if (!booking || booking.user.toString() !== req.user._id.toString()) {
-    throw Errors.BOOKING_NOT_FOUND(`/bookings/${req.params.id}/refund`);
-  }
-  const tx = await Transaction.findOne({ booking: booking._id, status: 'CAPTURED' }).sort({ createdAt: -1 });
+  if (!booking) throw Errors.BOOKING_NOT_FOUND(`/bookings/${req.params.id}/refund`);
+  const tx = await Transaction.findOne({ booking: booking._id, status: { $in: ['CAPTURED', 'REFUNDED'] } })
+    .sort({ createdAt: -1 });
   if (!tx) throw Errors.NOT_FOUND('Captured transaction for this booking', `/bookings/${req.params.id}/refund`);
 
   let amount = tx.amount;

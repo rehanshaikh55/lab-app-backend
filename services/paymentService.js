@@ -5,7 +5,7 @@ import Subscription from '../models/subscription.js';
 import { Errors } from '../common/errors.js';
 import { notifyBookingStatus, notify } from './notificationService.js';
 import { generateInvoice } from './invoiceService.js';
-import { issueRefund } from './refundService.js';
+import { issueRefund, refundCancelledBooking, applyRefundWebhook } from './refundService.js';
 import { assertTransition } from './_shared/transitions.js';
 import { recordEvent } from './_shared/events.js';
 
@@ -92,6 +92,10 @@ export const handleRazorpayWebhook = async ({ rawBody, signature, payload }) => 
   if (!verifySignature(rawBody, signature)) throw Errors.WEBHOOK_SIGNATURE_INVALID();
   const event = payload?.event;
 
+  if (event === 'refund.processed' || event === 'refund.failed') {
+    return applyRefundWebhook({ event, entity: payload?.payload?.refund?.entity });
+  }
+
   if (event === 'payment.failed') {
     const entity = payload?.payload?.payment?.entity;
     const providerOrderId = entity?.order_id;
@@ -152,6 +156,11 @@ export const handleRazorpayWebhook = async ({ rawBody, signature, payload }) => 
 
   const booking = await Booking.findById(tx.booking);
   if (!booking) return { handled: false };
+  if (booking.status === 'CANCELLED') {
+    // Paid after the booking was cancelled (e.g. the slot hold expired mid-checkout): give it back.
+    await refundCancelledBooking({ booking, reason: 'payment received after booking was cancelled' });
+    return { handled: true, bookingId: booking._id, transactionId: tx._id };
+  }
   if (booking.status === 'PENDING') {
     const fromStatus = booking.status;
     assertTransition(fromStatus, 'CONFIRMED');

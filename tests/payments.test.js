@@ -43,6 +43,13 @@ beforeEach(async () => {
   token = login.json().accessToken;
 });
 
+const adminToken = async () => {
+  if (!(await User.exists({ email:'admin@x.com' }))) {
+    await User.create({ name:'Admin', email:'admin@x.com', roles:['ADMIN'], passwordHash: await bcrypt.hash('pass123',12) });
+  }
+  const res = await app.inject({ method:'POST', url:'/api/auth/login', payload:{ email:'admin@x.com', password:'pass123' } });
+  return res.json().accessToken;
+};
 const futureThursday = '2026-06-04'; // a Thursday, matches convention used by tests/booking.test.js
 
 const capturedPayload = (orderId, paymentId) => ({
@@ -153,7 +160,7 @@ test('POST /bookings/:id/refund without testIds refunds the full captured amount
   await payAndCapture(booking._id, token);
 
   const res = await app.inject({
-    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${token}` }, payload:{},
+    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${await adminToken()}` }, payload:{},
   });
   assert.equal(res.statusCode, 201);
   assert.equal(res.json().refund.amount, booking.totalAmount);
@@ -165,7 +172,7 @@ test('POST /bookings/:id/refund with testIds refunds only the sum of those tests
   await payAndCapture(booking._id, token);
 
   const res = await app.inject({
-    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${token}` },
+    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${await adminToken()}` },
     payload: { testIds: [testDoc._id.toString()] },
   });
   assert.equal(res.statusCode, 201);
@@ -177,30 +184,26 @@ test('requesting a refund exceeding the remaining refundable balance throws VALI
   await payAndCapture(booking._id, token);
 
   const first = await app.inject({
-    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${token}` }, payload:{},
+    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${await adminToken()}` }, payload:{},
   });
   assert.equal(first.statusCode, 201);
 
   const second = await app.inject({
-    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${token}` }, payload:{},
+    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${await adminToken()}` }, payload:{},
   });
   assert.equal(second.statusCode, 400);
   assert.equal(second.json().type, 'https://labzy.in/errors/VALIDATION_ERROR');
 });
 
-test('POST /bookings/:id/refund on someone else\'s booking throws BOOKING_NOT_FOUND (404)', async () => {
+test('POST /bookings/:id/refund is refused for customers, even on their own booking (403)', async () => {
   const booking = await createBooking(token, { testIds: [testDoc._id.toString()], slotStart: '14:30' });
   await payAndCapture(booking._id, token);
 
-  await User.create({ name:'Other', email:'other3@x.com', roles:['CUSTOMER'], passwordHash: await bcrypt.hash('pass123',12) });
-  const otherLogin = await app.inject({ method:'POST', url:'/api/auth/login', payload:{ email:'other3@x.com', password:'pass123' } });
-  const otherToken = otherLogin.json().accessToken;
-
   const res = await app.inject({
-    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${otherToken}` }, payload:{},
+    method:'POST', url:`/api/bookings/${booking._id}/refund`, headers:{ authorization:`Bearer ${token}` }, payload:{},
   });
-  assert.equal(res.statusCode, 404);
-  assert.equal(res.json().type, 'https://labzy.in/errors/BOOKING_NOT_FOUND');
+  assert.equal(res.statusCode, 403);
+  assert.equal(await Refund.countDocuments({ booking: booking._id }), 0);
 });
 
 test('createIntent rejects a booking switched to PAY_AT_LAB', async () => {
