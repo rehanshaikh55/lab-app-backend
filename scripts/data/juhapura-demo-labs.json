@@ -1,0 +1,50 @@
+[
+  {
+    "key": "usmanpura-imaging",
+    "name": "Usmanpura Imaging Centre — Juhapura",
+    "line1": "FF-1, Medplus Commercial Complex, opposite Amber Tower",
+    "line2": "Next to Arshad Park, Makarba–Sarkhej Road, Juhapura",
+    "coordinates": [72.5120903, 22.9887089],
+    "coordinateAccuracy": "Official branch map centre; demo navigation only",
+    "source": "https://www.usmanpuraimaging.com/ahmedabad/imaging-centre-juhapura",
+    "imaging": true
+  },
+  {
+    "key": "u-biotek",
+    "name": "U Biotek Laboratory — Juhapura",
+    "line1": "Beside Urban Health Centre",
+    "line2": "Juhapura",
+    "coordinates": [72.5215, 22.9990],
+    "coordinateAccuracy": "Approximate Juhapura area point; not a verified entrance pin",
+    "source": "https://www.drlogy.com/ahmedabad/lab/u-biotek-laboratory"
+  },
+  {
+    "key": "ultra-care",
+    "name": "Ultra Care Pathology Laboratory — Juhapura",
+    "line1": "Sarkhej Road, near Telephone Hotel, opposite Royal Nawab Complex",
+    "line2": "Juhapura",
+    "coordinates": [72.525487, 22.99619],
+    "coordinateAccuracy": "Public listing directions point; demo navigation only",
+    "source": "https://www.timesmed.com/Hospital/Ahmedabad/ultra-care-pathology-laboratory-60899"
+  },
+  {
+    "key": "silverline",
+    "name": "Silverline Pathology Laboratory — Juhapura",
+    "line1": "1st Floor, Aman Complex, Sarkhej Road",
+    "line2": "Near Royal Akbar Tower, Juhapura",
+    "coordinates": [72.5229, 22.9973],
+    "coordinateAccuracy": "Approximate Royal Akbar Tower area point; not a verified entrance pin",
+    "source": "https://www.listif.com/ahmedabad/silverline-pathology-laboratory-juhapura-827f2bd8229e"
+  },
+  {
+    "key": "katrawala",
+    "name": "Katrawala Diagnostic Centre — Juhapura",
+    "line1": "209, 2nd Floor, Aayat Avenue, TP 85 Road",
+    "line2": "Opposite Amber Tower, Juhapura",
+    "coordinates": [72.5123, 22.9888],
+    "coordinateAccuracy": "Approximate Amber Tower area point; not a verified entrance pin",
+    "source": "https://www.katrawaladiagnostics.com/contact",
+    "imaging": true,
+    "imagingOnly": true
+  }
+]

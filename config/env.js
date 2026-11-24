@@ -8,6 +8,11 @@ export const COOKIE_PASSWORD = process.env.COOKIE_PASSWORD;
 export const EMAIL_USER = process.env.EMAIL_USER;
 export const EMAIL_PASS = process.env.EMAIL_PASS;
 export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+export const CORS_ORIGINS = [...new Set([
+  FRONTEND_URL,
+  'https://labzy-web.onrender.com',
+  ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+])];
 export const FIREBASE_SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 export const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET;
 export const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;

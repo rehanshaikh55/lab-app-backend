@@ -35,9 +35,13 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: CORS_ORIGINS
+        sync: false
       # Email: Render's free plan blocks SMTP, so send through Brevo's HTTPS API.
       # EMAIL_FROM must be a sender verified in Brevo (Senders & IP).
       - key: BREVO_API_KEY
+        sync: false
+      - key: LEAD_ALERT_EMAIL
         sync: false
       - key: EMAIL_FROM
         sync: false

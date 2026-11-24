@@ -7,6 +7,9 @@ import  Admin  from '../models/admin.js';
 import  Lab  from '../models/lab.js';
 import  Test  from '../models/test.js';
 import  Booking  from '../models/booking.js';
+import Lead from '../models/lead.js';
+import BlogPost from '../models/blogPost.js';
+import { blogAdminOptions } from '../services/blogPublishing.js';
 
 import { authenticate, COOKIE_PASSWORD, createSessionStore } from './config.js';
 import { dark, light } from '@adminjs/themes';
@@ -15,6 +18,7 @@ AdminJS.registerAdapter(AdminJSMongoose);
 
 export const admin = new AdminJS({
   resources: [
+    { resource: BlogPost, options: blogAdminOptions },
     {
       resource: User,
       options: {
@@ -46,6 +50,24 @@ export const admin = new AdminJS({
       options: {
         listProperties: ['user', 'lab', 'tests', 'scheduledDate', 'status', 'totalAmount'],
       }
+    },
+    {
+      resource: Lead,
+      options: {
+        listProperties: ['type', 'name', 'labName', 'phone', 'status', 'source', 'createdAt'],
+        filterProperties: ['type', 'status'],
+        editProperties: ['status'],
+        actions: {
+          new: { isAccessible: false },
+          delete: { isAccessible: false },
+          bulkDelete: { isAccessible: false },
+          edit: {
+            before: (request) => request.method === 'post'
+              ? { ...request, payload: { status: request.payload?.status } }
+              : request,
+          },
+        },
+      },
     },
   ],
   branding: {

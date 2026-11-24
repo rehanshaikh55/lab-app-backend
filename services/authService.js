@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { generateAccessToken, generateRefreshToken } from '../utils/generateToken.js';
 import { JWT_REFRESH_SECRET, EMAIL_USER, EMAIL_PASS, FRONTEND_URL } from '../config/env.js';
 import { Errors } from '../common/errors.js';
+import { brevoTransport } from '../integrations/email/brevo.js';
 
 const REQUIRED_CONSENTS = ['TOS', 'PRIVACY', 'HEALTH_RECORDS'];
 const MIN_AGE_YEARS = 18;
@@ -27,25 +28,6 @@ const ageYearsFrom = (birthDate) => {
   const ageMs = Date.now() - new Date(birthDate).getTime();
   return ageMs / (365.25 * 24 * 3600 * 1000);
 };
-
-// Brevo's HTTPS API, for hosts that block outbound SMTP (Render's free plan
-// blocks ports 25/465/587, so Gmail SMTP hangs there).
-const brevoTransport = (apiKey) => ({
-  sendMail: async ({ to, subject, html }) => {
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': apiKey, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        sender: { email: process.env.EMAIL_FROM || EMAIL_USER, name: 'Labzy' },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) throw new Error(`Brevo send failed: ${res.status} ${await res.text().catch(() => '')}`);
-  },
-});
 
 let _transporter;
 const getTransporter = () => {

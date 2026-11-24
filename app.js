@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { connectDB } from "./config/connect.js";
-import { PORT, NODE_ENV, FRONTEND_URL } from "./config/env.js";
+import { PORT, NODE_ENV, CORS_ORIGINS } from "./config/env.js";
 import { assertRequiredEnv } from "./config/env.js";
 import { admin, buildAdminRouter } from "./config/setup.js";
 import { registerRoutes } from "./routes/index.js";
@@ -20,7 +20,7 @@ export const buildApp = async ({ withAdmin = true } = {}) => {
   });
 
   await app.register(cors, {
-    origin: NODE_ENV === 'production' ? FRONTEND_URL : true,
+    origin: CORS_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
