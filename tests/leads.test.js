@@ -88,6 +88,31 @@ test('succeeds and keeps the lead when Brevo rejects the alert', async (t) => {
   assert.equal(mail.mock.callCount(), 1);
 });
 
+test('confirms a saved lead while its alert email is still pending', async (t) => {
+  const { app, submit, saved, mail } = await setup(t);
+  await app.ready();
+  let finishMail;
+  const pendingMail = new Promise(resolve => { finishMail = resolve; });
+  mail.mock.mockImplementation(() => pendingMail);
+  const submission = submit(waitlist);
+  let timeout;
+  try {
+    const response = await Promise.race([
+      submission,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Submission waited for the alert email')), 2000);
+      }),
+    ]);
+    assert.equal(response.statusCode, 201);
+    assert.equal(saved.length, 1);
+    assert.equal(mail.mock.callCount(), 1);
+  } finally {
+    clearTimeout(timeout);
+    finishMail({ ok: true });
+    await submission;
+  }
+});
+
 test('rate limits the sixth submission from the same IP for one hour', async (t) => {
   const { submit, saved } = await setup(t);
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -117,6 +142,8 @@ test('allows configured origins and omits CORS permission for other origins', as
   const { app } = await setup(t);
   for (const origin of [
     process.env.FRONTEND_URL,
+    'https://labzy.co.in',
+    'https://www.labzy.co.in',
     'https://labzy-web.onrender.com',
     'https://landing.example.test',
     'https://second.example.test',

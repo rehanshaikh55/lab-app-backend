@@ -60,15 +60,13 @@ export const leadRoutes = async (fastify) => {
     const lead = await Lead.create({ ...fields, ...(consent === true ? { consentedAt: new Date() } : {}) });
     const { BREVO_API_KEY, LEAD_ALERT_EMAIL } = process.env;
     if (BREVO_API_KEY && LEAD_ALERT_EMAIL) {
-      try {
-        await brevoTransport(BREVO_API_KEY).sendMail({
-          to: LEAD_ALERT_EMAIL,
-          subject: `New Labzy lead: ${lead.type}`,
-          text: `Lead ${lead.id} from ${lead.source}. Open the Lead resource in AdminJS to follow up.`,
-        });
-      } catch (error) {
+      void brevoTransport(BREVO_API_KEY).sendMail({
+        to: LEAD_ALERT_EMAIL,
+        subject: `New Labzy lead: ${lead.type}`,
+        text: `Lead ${lead.id} from ${lead.source}. Open the Lead resource in AdminJS to follow up.`,
+      }).catch((error) => {
         request.log.warn({ leadId: lead.id, err: error }, 'Lead alert email failed');
-      }
+      });
     }
 
     return reply.code(201).send({ ok: true });

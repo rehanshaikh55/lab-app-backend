@@ -10,6 +10,8 @@ export const EMAIL_PASS = process.env.EMAIL_PASS;
 export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 export const CORS_ORIGINS = [...new Set([
   FRONTEND_URL,
+  'https://labzy.co.in',
+  'https://www.labzy.co.in',
   'https://labzy-web.onrender.com',
   ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
 ])];
