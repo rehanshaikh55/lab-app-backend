@@ -25,6 +25,11 @@ export const buildApp = async ({ withAdmin = true } = {}) => {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
   await app.register(websocket);
+  // Backend responses and authenticated admin pages must never be indexed.
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return payload;
+  });
 
   app.get('/health', async () => ({
     status: 'ok',

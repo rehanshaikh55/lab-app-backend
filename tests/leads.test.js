@@ -33,6 +33,7 @@ test('accepts both lead types, persists NEW status, and sends a Brevo alert', as
   for (const lead of [waitlist, { ...partner, status: 'CLOSED' }]) {
     const response = await submit(lead);
     assert.equal(response.statusCode, 201, response.body);
+    assert.equal(response.headers['x-robots-tag'], 'noindex, nofollow, noarchive');
     assert.deepEqual(response.json(), { ok: true });
   }
 

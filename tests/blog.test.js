@@ -5,7 +5,7 @@ import BlogPost from '../models/blogPost.js';
 import { blogRoutes } from '../routes/blogRoutes.js';
 import { prepareBlog, rebuildBlog, blogAdminOptions } from '../services/blogPublishing.js';
 
-const article = { title: 'Booking a test', slug: 'booking-a-test', excerpt: 'Booking steps', body: 'Open the app.', author: 'Labzy team', status: 'published' };
+const article = { contentType: 'service', title: 'Booking a test', slug: 'booking-a-test', excerpt: 'Booking steps', body: 'Open the app.', author: 'Labzy team', status: 'published' };
 
 test('validates slugs, publication state and HTTPS cover images', async () => {
   const post = new BlogPost(article);

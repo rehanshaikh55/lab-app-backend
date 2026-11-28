@@ -14,7 +14,7 @@ test('persisted editorial lifecycle publishes, edits and withdraws articles with
     await mongoose.connect(mongo.getUri());
     await BlogPost.init();
     await app.register(blogRoutes, { prefix: '/api' });
-    const data = { title: 'Real article', slug: 'real-article', body: 'A paragraph.', excerpt: 'Summary.', author: 'Test author' };
+    const data = { contentType: 'service', title: 'Real article', slug: 'real-article', body: 'A paragraph.', excerpt: 'Summary.', author: 'Test author' };
     const draft = await BlogPost.create(data);
     await BlogPost.create({ ...data, slug: 'future-article', status: 'published', publishedAt: new Date(Date.now() + 86400000) });
     assert.equal((await app.inject('/api/blog/posts')).json().total, 0);

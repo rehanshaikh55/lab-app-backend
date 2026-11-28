@@ -19,8 +19,18 @@ export async function rebuildBlog(response, request) {
 
 export function prepareBlog(request, context) {
   if (request.method !== 'post') return request;
-  const allowed = ['title', 'slug', 'excerpt', 'body', 'author', 'category', 'coverImage', 'seoTitle', 'seoDescription', 'status'];
-  const payload = Object.fromEntries(allowed.filter(key => key in (request.payload || {})).map(key => [key, request.payload[key]]));
+  const allowed = ['title', 'slug', 'excerpt', 'body', 'author', 'category', 'coverImage', 'seoTitle', 'seoDescription', 'status', 'contentType', 'reviewStatus', 'reviewedBy', 'reviewerCredentials', 'reviewedAt', 'references'];
+  const payload = Object.fromEntries(Object.entries(request.payload || {}).filter(([key]) => allowed.includes(key) || /^references\.\d+\.(title|url)$/.test(key)));
+  // AdminJS edit uses findOneAndUpdate; model document hooks do not run there.
+  // Fail closed on edits too, including body changes to previously reviewed text.
+  const current = context.record?.params || {};
+  const merged = { ...current, ...payload };
+  if (merged.contentType !== 'service') {
+    const changed = ['body', 'title', 'excerpt'].some(key => key in payload && payload[key] !== current[key]);
+    if (changed && (!payload.reviewedAt || Date.parse(payload.reviewedAt) <= Date.parse(current.reviewedAt))) payload.reviewStatus = 'unreviewed';
+    const referenceKeys = Object.keys(merged).some(key => /^references\.\d+\.url$/.test(key) && /^https:\/\//.test(merged[key]));
+    if (merged.status === 'published' && (payload.reviewStatus === 'unreviewed' || merged.reviewStatus !== 'approved' || !merged.reviewedBy?.trim() || !merged.reviewerCredentials?.trim() || !Number.isFinite(Date.parse(merged.reviewedAt)) || Date.parse(merged.reviewedAt) > Date.now() || !(merged.references?.length || referenceKeys))) payload.status = 'draft';
+  }
   if (payload.status === 'published' && !context.record?.params.publishedAt) payload.publishedAt = new Date().toISOString();
   return { ...request, payload };
 }
@@ -28,15 +38,18 @@ export function prepareBlog(request, context) {
 export const blogAdminOptions = {
   navigation: { name: 'Website', icon: 'FileText' },
   sort: { sortBy: 'updatedAt', direction: 'desc' },
-  listProperties: ['title', 'author', 'status', 'publishedAt', 'updatedAt'],
-  filterProperties: ['title', 'status', 'category', 'author'],
-  editProperties: ['title', 'slug', 'excerpt', 'body', 'author', 'category', 'coverImage', 'seoTitle', 'seoDescription', 'status'],
+  listProperties: ['title', 'contentType', 'reviewStatus', 'status', 'publishedAt', 'updatedAt'],
+  filterProperties: ['title', 'status', 'category', 'author', 'contentType', 'reviewStatus'],
+  editProperties: ['title', 'slug', 'excerpt', 'body', 'author', 'category', 'coverImage', 'seoTitle', 'seoDescription', 'contentType', 'reviewStatus', 'reviewedBy', 'reviewerCredentials', 'reviewedAt', 'references', 'status'],
   properties: {
     body: { type: 'textarea', props: { rows: 24 }, description: 'Plain text. Separate paragraphs with a blank line. HTML is displayed as text.' },
     excerpt: { type: 'textarea' },
     slug: { description: 'Unique URL name, e.g. booking-lab-tests-ahmedabad. Lowercase letters, numbers and hyphens only. Keep stable after publishing.' },
     coverImage: { description: 'Optional HTTPS image URL. Use an image you have permission to publish.' },
     author: { description: 'Actual author or editorial team. Have medical content reviewed before publishing.' },
+    contentType: { description: 'Use service only for nonclinical product/booking content. All clinical or preparation advice is medical.' },
+    reviewStatus: { description: 'Approval requires a real qualified reviewer, verified credentials, completed review date and authoritative references. Never invent these.' },
+    reviewerCredentials: { type: 'textarea' },
     status: { availableValues: [{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }] },
   },
   actions: {

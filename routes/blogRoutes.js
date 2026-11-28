@@ -1,8 +1,12 @@
 import BlogPost, { BLOG_SLUG_PATTERN } from '../models/blogPost.js';
 
 // Only editorial fields are exposed; never return internal IDs or draft status.
-const fields = { _id: 0, title: 1, slug: 1, excerpt: 1, body: 1, author: 1, category: 1, coverImage: 1, seoTitle: 1, seoDescription: 1, publishedAt: 1, updatedAt: 1 };
-const published = () => ({ status: 'published', publishedAt: { $lte: new Date() } });
+const fields = { _id: 0, title: 1, slug: 1, excerpt: 1, body: 1, author: 1, category: 1, coverImage: 1, seoTitle: 1, seoDescription: 1, publishedAt: 1, updatedAt: 1, contentType: 1, reviewStatus: 1, reviewedBy: 1, reviewerCredentials: 1, reviewedAt: 1, references: 1 };
+const published = () => ({ status: 'published', publishedAt: { $lte: new Date() }, $or: [
+  // Articles published before classification existed have no contentType; keep them public as service.
+  { contentType: { $in: ['service', null] } },
+  { contentType: 'medical', reviewStatus: 'approved', reviewedBy: { $regex: '\\S' }, reviewerCredentials: { $regex: '\\S' }, reviewedAt: { $lte: new Date() }, references: { $elemMatch: { title: { $regex: '\\S' }, url: { $regex: '^https://' } } } },
+] });
 
 export async function blogRoutes(app) {
   app.get('/blog/posts', {
